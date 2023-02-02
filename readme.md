@@ -38,7 +38,7 @@ Cloud desktop service:
 
 - 5 GF, 100 Mbps downloads, 4 layers (core os 100 MB, drivers 200 MB, library 200 MB, compatible layer 500 MB), application 5 GB
 
-- A task may occupy resources for several slots.
+- A task may occupy resources for several slots, which means we should consider the bandwidth in this scenario.
 
 <!-- - DataCenter: resource-rich, open, remote
 - Edge Server: resource-rich, open
@@ -58,18 +58,21 @@ Overall:
 
 Device:
 
-- Each user has three states (for CPU): occupied with task requirements (20%), just occupied (20%), and idle (60%)
+<!-- - Each user has three states (for CPU): occupied with task requirements (20%), just occupied (20%), and idle (60%) -->
 - Average 20% of the idle users are worker nodes (every idle device has 1/5 chance to become a worker)
 - Devices do not use the disk space prepared for OpenRaaS, even if they are not worker nodes. So we don't care about their inner storage space.
 
 Application:
 
 - Different applications may have some layers in common, so we specified application types and their propoties at the beginning of the procedure.
+- If a device is idle, it still has probability to require services like remote desktop dislike traditional CEC models.
 
 Task execution:
 
 - Do not care the network balance. Use all the bandwidth for the current task, and let others wait in line.
-- Mounting files does not occupy all bandwidth at once, so we set a fixed value of 1 MBps.
+- The compute worker $C$ should care about **the download link from meta OS**
+- Mounting files does not occupy all bandwidth at once, so we set a fixed value of 8 Mbps (1 MBps).
+- Uplink and downlink bandwidth are calculated together
 - Once a worker performs computation services, it will preserve the requested resource until task finishing. If it has a new demand, it will turn to ask for OpenRaaS services instead of blocking the ongoing tasks.
 
 ## C. Scheduling
@@ -106,6 +109,8 @@ b) $F$ for storage services:
 2. Choose filestore workers based on latency between the compute worker
 3. Spliting the image layers into several threads, and downloading from all the available depository workers (It prioritizes the node that responds first).
 
-# Related
+---
+
+## Related
 
 The implementation of [OpenBaaS](https://github.com/zobinHuang/OpenRaaS)
