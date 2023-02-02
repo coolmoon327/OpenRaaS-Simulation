@@ -1,6 +1,7 @@
 import imp
 import numpy as np
 from .task import *
+from .topology import *
 
 class Device(object):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
@@ -14,9 +15,11 @@ class Device(object):
         self.reset()
     
     def reset(self):
-        self.cpu = self.capacity[0]              # Spare computation capability: GigaFlops
-        self.mem = self.capacity[1]              # Storage space for OpenRaaS: MegaBytes
-        self.bw = self.capacity[2]               # bandwidth: MegaBytes
+        self.cpu = self.capacity[0]             # Spare computation capability: GigaFlops
+        self.mem = self.capacity[1]             # Storage space for OpenRaaS: MegaBytes
+        self.bw = self.capacity[2]              # bandwidth: MegaBytes
+                                                # the remaining bandwidth only be considered in a desktop application scenario
+                                                # other services only occupy network links for several seconds, which should be taken as the startup delay
         self.cal_tasks.clear()
         self.metaos_tasks.clear()
         self.image_tasks.clear()
@@ -27,7 +30,14 @@ class Device(object):
         
         # 2. update work load
         # be care the self.mem is prepared for OpenRaaS, and cannot be occupied by internal processes
-        cpu_offset = self.capacity * 0.03 * np.random.randn(1)[0]   # -0.1 ~ 0.1 of cpu capacity
+        cpu_offset = self.capacity * (0.03 +  0.03 * np.random.randn(1)[0])   # -0.06 ~ 0.12 of cpu capacity, more probability to be idle
+        self.cpu = np.clip(self.cpu+cpu_offset, 0., self.capacity[0]-self.external_cpu_occupation())
+    
+    def external_cpu_occupation(self):
+        cpu = 0.
+        for task in self.cal_tasks:
+            cpu += task.cpu
+        return cpu
     
     def release_task(self, task):
         pass
@@ -51,16 +61,26 @@ class Device(object):
             return -1
         
         # 2. check capacity
-        for task in self.tasks:
+        # 2.1 external tasks
+        for task in self.cal_tasks:
             cpu += task.cpu
             mem += task.mem
-        
+            bw += task.bandwidth(0)
+        for task in self.metaos_tasks:
+            bw += task.bandwidth(1)
+        for task in self.image_tasks:
+            bw += task.bandwidth(2)
+        # 2.2 stored applications & images
+        pass
+    
+        return 0
+    
     
 class Server(Device):
     def __init__(self, id):
         cpu = 50.
         mem = 3.2e6
-        bw = 1e3
+        bw = 1e3/8
         isOpen = True
         isMobile = False
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
@@ -98,7 +118,7 @@ class Desktop(Client):
     def __init__(self, id):
         cpu = max(20 + 3 * np.random.randn(1)[0], 0.)      # 11 ~ 29
         mem = max(30e3 + 3e3 * np.random.randn(1)[0], 0.)  # 21e3 ~ 39e3
-        bw = max(300 + 70 * np.random.randn(1)[0], 0.)     # 90 ~ 510
+        bw = max(300 + 70 * np.random.randn(1)[0], 0.)/8   # (90 ~ 510)/8 MBps
         isOpen = np.random.randint(0,10) < 3            # 30% devices are open
         isMobile = False
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
@@ -111,7 +131,7 @@ class MobileDevice(Client):
     def __init__(self, id):
         cpu = max(5 + 1 * np.random.randn(1)[0], 0.)       # 2 ~ 8
         mem = max(10e3 + 2e3 * np.random.randn(1)[0], 0.)  # 4e3 ~ 16e3
-        bw = max(300 + 70 * np.random.randn(1)[0], 0.)     # 90 ~ 510
+        bw = max(300 + 70 * np.random.randn(1)[0], 0.)/8   # (90 ~ 510)/8 MBps
         isOpen = False
         isMobile = True
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
@@ -124,7 +144,7 @@ class IoTDevice(Client):
     def __init__(self, id):
         cpu = max(5 + 1 * np.random.randn(1)[0], 0.)       # 2 ~ 8
         mem = max(5e3 + 1e3 * np.random.randn(1)[0], 0.)   # 2e3 ~ 8e3
-        bw = max(100 + 30 * np.random.randn(1)[0], 0.)     # 10 ~ 190
+        bw = max(100 + 30 * np.random.randn(1)[0], 0.)/8   # (10 ~ 190)/8 MBps
         isOpen = True
         isMobile = np.random.randint(0,10) < 6          # 60% devices are mobile
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
