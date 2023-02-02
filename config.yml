@@ -1,0 +1,3 @@
+M: 30     # number of edge servers
+N: 1000   # number of edge devices
+Network_num: 3  # number of edge areas
