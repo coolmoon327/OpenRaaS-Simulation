@@ -67,6 +67,11 @@ Application:
 - Different applications may have some layers in common, so we specified application types and their propoties at the beginning of the procedure.
 - If a device is idle, it still has probability to require services like remote desktop dislike traditional CEC models.
 
+Task generation:
+
+- Each client has 20% probability to require cloud services
+- If unspecified, those task types has the same chance to be chosen
+
 Task execution:
 
 - Do not care the network balance. Use all the bandwidth for the current task, and let others wait in line.

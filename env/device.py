@@ -9,9 +9,9 @@ class Device(object):
         self.capacity = [cpu, mem, bw]
         self.isOpen = isOpen        # Whether the operating system is open to developers or not
         self.isMobile = isMobile    # Whether the device is mobile or fixed
-        self.cal_tasks = []         # serve as a compute worker
-        self.metaos_tasks = []      # serve as a filestore worker
-        self.image_tasks = []       # serve as a depository worker
+        self.cal_tasks: list[ProcessTask] = []         # serve as a compute worker
+        self.metaos_tasks: list[StorageTask] = []      # serve as a filestore worker
+        self.image_tasks: list[DesktopTask] = []       # serve as a depository worker
         self.reset()
     
     def reset(self):
@@ -27,11 +27,24 @@ class Device(object):
     def step(self):
         '''step into next time slot'''
         # 1. clear instant cache of the last slot
+        # don't clear tasks set here, because destop services may occupy several slots
+        pass
         
         # 2. update work load
         # be care the self.mem is prepared for OpenRaaS, and cannot be occupied by internal processes
         cpu_offset = self.capacity * (0.03 +  0.03 * np.random.randn(1)[0])   # -0.06 ~ 0.12 of cpu capacity, more probability to be idle
         self.cpu = np.clip(self.cpu+cpu_offset, 0., self.capacity[0]-self.external_cpu_occupation())
+        
+        # 3. update task state
+        for task in self.cal_tasks + self.metaos_tasks + self.image_tasks:
+            task.step()
+        
+        # 4. release expired tasks
+        pass
+        
+        # 5. billing
+        pass
+        
     
     def external_cpu_occupation(self):
         cpu = 0.
@@ -39,11 +52,73 @@ class Device(object):
             cpu += task.cpu
         return cpu
     
-    def release_task(self, task):
+    ### tasks execution
+    
+    def get_tasks_set(self, microservice_type):
+        if microservice_type == 0:
+            return self.cal_tasks
+        elif microservice_type == 1:
+            return self.metaos_tasks
+        elif microservice_type == 2:
+            return self.image_tasks
+        else:
+            raise ValueError(f"Input microservice_type {microservice_type} is out of range!")
+    
+    def check_task_availability(self, microservice_type, task):
+        '''check whether the task can be executed in this device with microservice_type'''
+        ans = True
+        if microservice_type == 0:
+            if task.cpu > self.cpu or task.mem > self.mem or task.bandwidth(0) > self.bw:
+                ans = False
+        elif microservice_type == 1:
+            if task.bandwidth(1) > self.bw:
+                ans = False
+        elif microservice_type == 2:
+            if task.mem > self.mem or task.bandwidth(2) > self.bw:
+                ans = False
+        else:
+            raise ValueError(f"Input microservice_type {microservice_type} is out of range!")
+        return ans
+    
+    def allocate_tasks(self, microservice_type, task):
+        '''allocate task to this device, and specify its microservice character
+        microservice_type is used to specify the identity of this device 
+        0: the compute worker, and add the task into cal_tasks
+        1: the filestore worker, and add the task into metaos_tasks
+        2: the depository worker, and add the task into image_tasks
+        '''
+        tasks = self.get_tasks_set(microservice_type)
+        if not self.check_task_availability(microservice_type, task):
+            raise ValueError(f"The task with id {task.id} cannot be handled by device {self.id} in microservice_type {microservice_type}")
+        tasks.append(task)
+        # resource occupation
         pass
     
-    def release_task_by_taskid(self, task_id):
-        pass
+    def release_task(self, microservice_type, task):
+        '''release a target task from list
+        microservice_type is used to specify the identity of this device 
+        0: the compute worker, and release the task from cal_tasks
+        1: the filestore worker, and release the task from metaos_tasks
+        2: the depository worker, and release the task from image_tasks
+        '''
+        tasks = self.get_tasks_set(microservice_type)
+        try:
+            tasks.remove(task)
+        except:
+            raise ValueError(f"No such task with id {task.id} in microservice_type {microservice_type}")
+    
+    def release_task_by_taskid(self, microservice_type, task_id):
+        tasks = self.get_tasks_set(microservice_type)
+        for task in tasks:
+            if task.id == task_id:
+                self.release_task(microservice_type, task)
+        raise ValueError(f"No such task with id {task_id} in microservice_type {microservice_type}")
+        
+    def release_task_by_index(self, microservice_type, index):
+        tasks = self.get_tasks_set(microservice_type)
+        if not (0<=index<tasks.__len__()):
+            raise IndexError(f"Task index of task {index} is out of range [0, {tasks.__len__()})!")
+        self.release_task(tasks[index])
     
     def check_error(self):
         '''check whether the variables are correct
@@ -92,8 +167,9 @@ class Server(Device):
 class Client(Device):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
+        self.req_tasks = []
         
-    def set_requirement(self, type_num):
+    def setRequirementType(self, type_num):
         '''set requirement type
         type_num=0: processing service (just like other computation offloading)
         type_num=1: storage service
@@ -103,7 +179,7 @@ class Client(Device):
         '''
         self.req = type_num
     
-    def requirement(self):
+    def requirementType(self):
         if self.req == 0:
             return 'processing'
         elif self.req == 1:
@@ -112,6 +188,31 @@ class Client(Device):
             return 'destop'
         elif self.req == 3:
             return 'Internet'
+    
+    def requiredTasks(self):
+        return self.req_tasks
+    
+    def generateTask(self, task_type=-1):
+        if task_type == -1:
+            task_type = np.random.randint(0,3)
+        if task_type == 0:
+            task = ProcessTask()
+        elif task_type == 1:
+            task = StorageTask()
+        elif task_type == 2:
+            task = DesktopTask()
+        self.req_tasks.append(task)
+    
+    def reset(self):
+        super().reset()
+        self.req_tasks.clear()
+    
+    def step(self):
+        super().step()
+        # generate new tasks
+        self.req_tasks.clear()      # won't keep tasks waiting because the time slot unit is 30 minutes
+        if np.random.randint(0,10) < 2:
+            self.generateTask()
 
 
 class Desktop(Client):
