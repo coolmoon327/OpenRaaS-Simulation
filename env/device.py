@@ -35,14 +35,14 @@ class Device(object):
         cpu_offset = self.capacity * (0.03 +  0.03 * np.random.randn(1)[0])   # -0.06 ~ 0.12 of cpu capacity, more probability to be idle
         self.cpu = np.clip(self.cpu+cpu_offset, 0., self.capacity[0]-self.external_cpu_occupation())
         
-        # 3. update task state
-        for task in self.cal_tasks + self.metaos_tasks + self.image_tasks:
-            task.step()
-        
-        # 4. release expired tasks
-        pass
-        
-        # 5. billing
+        # Warning: shouldn't update task here, because one task instance may be handled by three workers by weak copy. We should update it in the environment.py
+        # # 3. update task state
+        # for task in self.cal_tasks + self.metaos_tasks + self.image_tasks:
+        #     task.step()
+        #     if task.life_time == 0:
+        #         # release expired tasks
+        #         pass
+        #         # billing
         pass
         
     
@@ -196,11 +196,11 @@ class Client(Device):
         if task_type == -1:
             task_type = np.random.randint(0,3)
         if task_type == 0:
-            task = ProcessTask()
+            task = ProcessTask(self.id)
         elif task_type == 1:
-            task = StorageTask()
+            task = StorageTask(self.id)
         elif task_type == 2:
-            task = DesktopTask()
+            task = DesktopTask(self.id)
         self.req_tasks.append(task)
     
     def reset(self):

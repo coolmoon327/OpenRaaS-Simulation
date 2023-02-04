@@ -17,6 +17,7 @@ class ContainerLayer(Data):
         if not (0<=type<5):
             raise ValueError(f"Input type {type} is out of range!")
         self.type_num = type
+        self.hosts = [] # host devices which store this layer
 
     def type(self):
         if self.type_num == 0:
@@ -35,7 +36,7 @@ class Application(Data):
         '''Application files stored on filestore worker nodes'''
         super.__init__(id, size)
         self.env_layers: list[ContainerLayer] = []
-    
+        self.hosts = [] # host devices which store this application
 
 class LayerList(object):
     layers: list[ContainerLayer] = []  # store all layers, and sort by id
@@ -128,11 +129,25 @@ class ApplicationList(object):
             raise ValueError(f"The app list length {cls.apps.__len__()} is not equal to the total app number {index}")
     
     @classmethod
-    def get_arbitrary_application(cls, app_type):
+    def get_arbitrary_application(cls, app_type=-1):
         '''get an application from the list
         app_type indicates the application type: 0-processing, 1-storage, 2-desktop
         storage app (1) only return the fixed result
         '''
+        if app_type == -1:
+            app_type = np.random.randint(0, 3)
         if cls.apps.__len__() == 0:
             cls.init_apps() # here is initialization, remember not to init twice
-        pass
+        if app_type == 0:
+            applist = cls.process_apps
+        elif app_type == 1:
+            applist = cls.storage_apps
+        elif applist == 2:
+            applist = cls.desktop_apps
+        else:
+            raise ValueError(f"Input app_type {app_type} is out of range!")
+        
+        num = applist.__len__()
+        
+        index = np.random.randint(0, num)
+        return applist[index]
