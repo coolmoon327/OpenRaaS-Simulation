@@ -1,11 +1,29 @@
 import numpy as np
 
+'''data.type
+-1: not set
+0: os layer
+1: driver layer
+2: library layer
+3: execution layer
+4: compatible layer
+10: app
+'''
+
 class Data(object):
     def __init__(self, id, size):
         '''Basic data class'''
         self.size = size    # Data size: MegaBytes
         self.id = id
-        
+        self.hosts = []     # IDs of host devices storing this data
+        self.type = -1
+    
+    def add_host(self, host_id: int):
+        self.hosts.append(host_id)
+    
+    def print_type(self):
+        return "basic data"
+
 
 class ContainerLayer(Data):
     def __init__(self, id, size, type):
@@ -16,27 +34,31 @@ class ContainerLayer(Data):
         super.__init__(id, size)
         if not (0<=type<5):
             raise ValueError(f"Input type {type} is out of range!")
-        self.type_num = type
-        self.hosts = [] # host devices which store this layer
+        self.type = type
 
-    def type(self):
-        if self.type_num == 0:
-            print("os")
-        elif self.type_num == 1:
-            print("driver")
-        elif self.type_num == 2:
-            print("library")
-        elif self.type_num == 3:
-            print("execution")
-        elif self.type_num == 4:
-            print("compatible")
+    def print_type(self):
+        if self.type == 0:
+            return "os"
+        elif self.type == 1:
+            return "driver"
+        elif self.type == 2:
+            return "library"
+        elif self.type == 3:
+            return "execution"
+        elif self.type == 4:
+            return "compatible"
+
 
 class Application(Data):
     def __init__(self, id, size):
         '''Application files stored on filestore worker nodes'''
         super.__init__(id, size)
+        self.type = 10
         self.env_layers: list[ContainerLayer] = []
-        self.hosts = [] # host devices which store this application
+    
+    def print_type(self):
+        return "app"
+
 
 class LayerList(object):
     layers: list[ContainerLayer] = []  # store all layers, and sort by id
@@ -45,6 +67,7 @@ class LayerList(object):
     lib_layers: list[ContainerLayer] = []
     exec_layers: list[ContainerLayer] = []
     compatible_layers: list[ContainerLayer] = []
+    type_num = 5
     
     @classmethod
     def init_layers(cls):
@@ -83,32 +106,82 @@ class LayerList(object):
         if cls.layers.__len__() != index:
             raise ValueError(f"The layer list length {cls.layers.__len__()} is not equal to the total sublayers number {index}")
     
+    @classmethod
+    def get_arbitrary_data(cls, layer_type=-1):
+        '''get an layer from the list
+        layer_type indicates the layer type (default -1 to random in the whole list)
+        '''
+        layerlist = cls.get_list(layer_type)
+        num = layerlist.__len__()
+        
+        index = np.random.randint(0, num)
+        return layerlist[index]
+    
+    @classmethod
+    def get_list(cls, layer_type=-1):
+        '''
+        -1: all
+        0: os
+        1: driver
+        2: library
+        3: execution
+        4: compatible
+        '''
+        if cls.layers.__len__() == 0:
+            cls.init_layers() # here is initialization, remember not to init twice
+        
+        if layer_type == -1:
+            # layer_type = np.random.randint(0, 3)
+            layerlist = cls.layers
+        elif layer_type == 0:
+            layerlist = cls.os_layers
+        elif layer_type == 1:
+            layerlist = cls.driver_layers
+        elif layer_type == 2:
+            layerlist = cls.lib_layers
+        elif layer_type == 3:
+            layerlist = cls.exec_layers
+        elif layer_type == 4:
+            layerlist = cls.compatible_layers
+        else:
+            raise ValueError(f"Input layer_type {layer_type} is out of range!")
+        return layerlist
+    
+    @classmethod
+    def get_data_by_id(cls, id):
+        if cls.layers.__len__() == 0:
+            cls.init_layers()
+            
+        if not (0 <= id < cls.layers.__len__()):
+            raise IndexError(f"The input id {id} is out of range!")
+        return cls.layers[id]
+    
     
 class ApplicationList(object):
     apps: list[Application] = [] # store all applications, and sort by id
     process_apps: list[Application] = []
     storage_apps: list[Application] = []
     desktop_apps: list[Application] = []
+    type_num = 3
     
-    @ classmethod
+    @classmethod
     def init_apps(cls):
-        LayerList.init_layers() # only can init once!
         index = 0
         # processing
         for _ in range(30):
             app = Application(index, 500.)
-            osl = LayerList.os_layers[np.random.randint(0,3)]
-            dl = LayerList.driver_layers[np.random.randint(1,5)]
-            ll = LayerList.lib_layers[np.random.randint(4,8)]
+            osl = LayerList.get_list(0)[np.random.randint(0,3)]
+            dl = LayerList.get_list(1)[np.random.randint(1,5)]
+            ll = LayerList.get_list(2)[np.random.randint(4,8)]
             app.env_layers = [osl, dl, ll]
             cls.process_apps.append(app)
             index += 1
         # storage
         app = Application(index, 0.)
-        osl = LayerList.os_layers[0]
-        dl = LayerList.driver_layers[0]
-        ll = LayerList.lib_layers[0]
-        el = LayerList.exec_layers[0]
+        osl = LayerList.get_list(0)[0]
+        dl = LayerList.get_list(1)[0]
+        ll = LayerList.get_list(2)[0]
+        el = LayerList.get_list(3)[0]
         app.env_layers = [osl, dl, ll, el]
         cls.storage_apps.append(app)
         index += 1
@@ -116,10 +189,10 @@ class ApplicationList(object):
         for _ in range(20):
             size = max(5000 + 1000 * np.random.randn(1)[0], 1.)     # 2000 ~ 8000 MB
             app = Application(index, size)
-            osl = LayerList.os_layers[1]
-            dl = LayerList.driver_layers[1]
-            ll = LayerList.lib_layers[np.random.randint(1,4)]
-            cl = LayerList.lib_layers[0]
+            osl = LayerList.get_list(0)[1]
+            dl = LayerList.get_list(1)[1]
+            ll = LayerList.get_list(2)[np.random.randint(1,4)]
+            cl = LayerList.get_list(4)[0]
             app.env_layers = [osl, dl, ll, cl]
             cls.desktop_apps.append(app)
             index += 1
@@ -129,16 +202,32 @@ class ApplicationList(object):
             raise ValueError(f"The app list length {cls.apps.__len__()} is not equal to the total app number {index}")
     
     @classmethod
-    def get_arbitrary_application(cls, app_type=-1):
+    def get_arbitrary_data(cls, app_type=-1):
         '''get an application from the list
-        app_type indicates the application type: 0-processing, 1-storage, 2-desktop
+        app_type indicates the application type: 0-processing, 1-storage, 2-desktop (default -1 to random in the whole list)
         storage app (1) only return the fixed result
         '''
-        if app_type == -1:
-            app_type = np.random.randint(0, 3)
+        applist = cls.get_list(app_type)
+        num = applist.__len__()
+        
+        index = np.random.randint(0, num)
+        return applist[index]
+
+    @classmethod
+    def get_list(cls, app_type=-1):
+        '''
+        -1: all
+        0: processing
+        1: storage
+        2: desktop
+        '''
         if cls.apps.__len__() == 0:
             cls.init_apps() # here is initialization, remember not to init twice
-        if app_type == 0:
+        
+        if app_type == -1:
+            # app_type = np.random.randint(0, 3)
+            applist = cls.apps
+        elif app_type == 0:
             applist = cls.process_apps
         elif app_type == 1:
             applist = cls.storage_apps
@@ -146,8 +235,13 @@ class ApplicationList(object):
             applist = cls.desktop_apps
         else:
             raise ValueError(f"Input app_type {app_type} is out of range!")
-        
-        num = applist.__len__()
-        
-        index = np.random.randint(0, num)
-        return applist[index]
+        return applist
+    
+    @classmethod
+    def get_data_by_id(cls, id):
+        if cls.apps.__len__() == 0:
+            cls.init_apps()
+            
+        if not (0 <= id < cls.apps.__len__()):
+            raise IndexError(f"The input id {id} is out of range!")
+        return cls.apps[id]

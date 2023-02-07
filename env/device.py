@@ -9,12 +9,15 @@ class Device(object):
         self.capacity = [cpu, mem, bw]
         self.isOpen = isOpen        # Whether the operating system is open to developers or not
         self.isMobile = isMobile    # Whether the device is mobile or fixed
+        self.layers = []    # IDs of stored container layers
+        self.apps = []      # IDs of stored app data
         self.cal_tasks: list[ProcessTask] = []         # serve as a compute worker
         self.metaos_tasks: list[StorageTask] = []      # serve as a filestore worker
         self.image_tasks: list[DesktopTask] = []       # serve as a depository worker
         self.reset()
     
     def reset(self):
+        # not reset layers & apps
         self.cpu = self.capacity[0]             # Spare computation capability: GigaFlops
         self.mem = self.capacity[1]             # Storage space for OpenRaaS: MegaBytes
         self.bw = self.capacity[2]              # bandwidth: MegaBytes
@@ -28,7 +31,6 @@ class Device(object):
         '''step into next time slot'''
         # 1. clear instant cache of the last slot
         # don't clear tasks set here, because destop services may occupy several slots
-        pass
         
         # 2. update work load
         # be care the self.mem is prepared for OpenRaaS, and cannot be occupied by internal processes
@@ -43,7 +45,6 @@ class Device(object):
         #         # release expired tasks
         #         pass
         #         # billing
-        pass
         
     
     def external_cpu_occupation(self):
@@ -73,8 +74,12 @@ class Device(object):
         elif microservice_type == 1:
             if task.bandwidth(1) > self.bw:
                 ans = False
+            if task.type == 1:
+                # in a storage task, filestore worker is used to contain user upload data
+                if task.storage_size > self.mem:
+                    ans = False
         elif microservice_type == 2:
-            if task.mem > self.mem or task.bandwidth(2) > self.bw:
+            if task.bandwidth(2) > self.bw:
                 ans = False
         else:
             raise ValueError(f"Input microservice_type {microservice_type} is out of range!")
@@ -91,8 +96,19 @@ class Device(object):
         if not self.check_task_availability(microservice_type, task):
             raise ValueError(f"The task with id {task.id} cannot be handled by device {self.id} in microservice_type {microservice_type}")
         tasks.append(task)
+        task.set_provider(microservice_type, self.id)   # TODO: check whether this setting takes effect in the global
         # resource occupation
-        pass
+        if microservice_type == 0:
+            self.cpu -= task.cpu
+            self.mem -= task.mem
+            self.bw -= task.bandwidth(0)
+        elif microservice_type == 1:
+            self.bw -= task.bandwidth(1)
+            if task.type == 1:
+                # in a storage task, filestore worker is used to contain user upload data
+                self.mem -= task.storage_size
+        elif microservice_type == 2:
+            self.bw -= task.bandwidth(2)
     
     def release_task(self, microservice_type, task):
         '''release a target task from list
@@ -106,6 +122,18 @@ class Device(object):
             tasks.remove(task)
         except:
             raise ValueError(f"No such task with id {task.id} in microservice_type {microservice_type}")
+        # release resource occuptaion
+        if microservice_type == 0:
+            self.cpu += task.cpu
+            self.mem += task.mem
+            self.bw += task.bandwidth(0)
+        elif microservice_type == 1:
+            self.bw += task.bandwidth(1)
+            if task.type == 1:
+                # in a storage task, filestore worker is used to contain user upload data
+                self.mem += task.storage_size
+        elif microservice_type == 2:
+            self.bw += task.bandwidth(2)
     
     def release_task_by_taskid(self, microservice_type, task_id):
         tasks = self.get_tasks_set(microservice_type)
@@ -119,6 +147,26 @@ class Device(object):
         if not (0<=index<tasks.__len__()):
             raise IndexError(f"Task index of task {index} is out of range [0, {tasks.__len__()})!")
         self.release_task(tasks[index])
+    
+    ## data arrangement
+    
+    def is_enough_for_storing(self, data: Data):
+        if self.mem > data.size:
+            return True
+        else:
+            return False
+    
+    def store_data(self, data: Data):
+        if not self.is_enough_for_storing(data):
+            raise ValueError(f"Cannot store the input data in device {self.id}")
+        self.mem -= data.size
+        if data.type == -1:
+            raise ValueError(f"Data with id {data.id} didn't set type value!")
+        elif data.type == 10:
+            self.apps.append(data.id)
+        else:
+            self.layers.append(data.id)
+        data.add_host(self.id)
     
     def check_error(self):
         '''check whether the variables are correct
@@ -146,8 +194,17 @@ class Device(object):
         for task in self.image_tasks:
             bw += task.bandwidth(2)
         # 2.2 stored applications & images
-        pass
-    
+        List = ApplicationList
+        ids = self.apps
+        for _ in range(2):
+            for id in ids:
+                mem += List.get_data_by_id(id).size
+            List = LayerList
+            ids = self.layers
+        
+        if not(cpu == C[0] and mem == C[1] and bw == C[2]):
+            return -2
+        
         return 0
     
     
@@ -169,30 +226,30 @@ class Client(Device):
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
         self.req_tasks = []
         
-    def setRequirementType(self, type_num):
-        '''set requirement type
-        type_num=0: processing service (just like other computation offloading)
-        type_num=1: storage service
-        type_num=2: destop service
+    # def set_requirement_type(self, type):
+    #     '''set requirement type
+    #     type=0: processing service (just like other computation offloading)
+    #     type=1: storage service
+    #     type=2: destop service
         
-        TODO: add support for Internet APP (back-end simulation)
-        '''
-        self.req = type_num
+    #     TODO: add support for Internet APP (back-end simulation)
+    #     '''
+    #     self.req = type
     
-    def requirementType(self):
-        if self.req == 0:
-            return 'processing'
-        elif self.req == 1:
-            return 'storage'
-        elif self.req == 2:
-            return 'destop'
-        elif self.req == 3:
-            return 'Internet'
+    # def print_requirement_type(self):
+    #     if self.req == 0:
+    #         return 'processing'
+    #     elif self.req == 1:
+    #         return 'storage'
+    #     elif self.req == 2:
+    #         return 'destop'
+    #     elif self.req == 3:
+    #         return 'Internet'
     
-    def requiredTasks(self):
+    def required_tasks(self):
         return self.req_tasks
     
-    def generateTask(self, task_type=-1):
+    def generate_task(self, task_type=-1):
         if task_type == -1:
             task_type = np.random.randint(0,3)
         if task_type == 0:
@@ -211,8 +268,8 @@ class Client(Device):
         super().step()
         # generate new tasks
         self.req_tasks.clear()      # won't keep tasks waiting because the time slot unit is 30 minutes
-        if np.random.randint(0,10) < 2:
-            self.generateTask()
+        if np.random.randint(0,10) < 2:     # 20% chance to gain a new requirement
+            self.generate_task()
 
 
 class Desktop(Client):
@@ -224,7 +281,7 @@ class Desktop(Client):
         isMobile = False
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
     
-    def type(self):
+    def print_type(self):
         return 'desktop'
 
 
@@ -237,7 +294,7 @@ class MobileDevice(Client):
         isMobile = True
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
     
-    def type(self):
+    def print_type(self):
         return 'mobile device'
 
 
@@ -250,5 +307,5 @@ class IoTDevice(Client):
         isMobile = np.random.randint(0,10) < 6          # 60% devices are mobile
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
     
-    def type(self):
+    def print_type(self):
         return 'IoT device'
