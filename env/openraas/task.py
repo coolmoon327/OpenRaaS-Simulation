@@ -84,6 +84,8 @@ class DesktopTask(Task):
         self.bw = max(100 + 30 * np.random.randn(1)[0], 0.)/8       # (10 ~ 190)/8
     
     def bandwidth(self, type):
+        # TODO: we should design a way to calculate delays
+        # bandwidth here only used to indicate the occupation of this slot
         if type == 0:
             return self.bw + 1  # add the downlink bandwidth from metaOS
         elif type == 1:

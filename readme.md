@@ -59,6 +59,7 @@ Overall:
 Device:
 
 <!-- - Each user has three states (for CPU): occupied with task requirements (20%), just occupied (20%), and idle (60%) -->
+- Users' online states are dynamic
 - Average 20% of the idle users are worker nodes (every idle device has 1/5 chance to become a worker)
 - Devices do not use the disk space prepared for OpenRaaS, even if they are not worker nodes. So we don't care about their inner storage space.
 

@@ -5,15 +5,21 @@ from .app import *
 from .task import *
 
 class Environment(object):
-    def __init__(self, config):
-        self.M = config['M']
-        self.N = config['N']
+    def __init__(self, config={}):
+        if len(config):
+            self.load_config(config)
         self.devices: list[Device] = []       # first M devices are servers -> self.devices[0:M]
         # scheduled_tasks stores tasks delivered to workers (in execution ones), while new_tasks stores just generated ones in this slot
         # these two taks lists cannot store any tasks in common or out-of-lifetime ones
         self.scheduled_tasks: list[Task] = []
         self.new_tasks: list[Task] = []
-        
+    
+    def load_config(self, config):
+        try:
+            self.M = config['M']
+            self.N = config['N']
+        except:
+            raise KeyError("Cannot find key M or N in config dict.")
         self.reset()
     
     def reset(self):
@@ -109,10 +115,23 @@ class Environment(object):
             i = self.M + j
             self.new_tasks += self.devices[i].req_tasks
     
-    def step(self):
+    def step(self, action):
         # 1. execute service composition
         pass
         # add newly executed ones in scheduled_tasks
     
         # 2. enter next step and gain new states
         self.next()
+        
+        # 3. organize state data
+        for task in self.new_tasks:
+            # TODO: use a temp list to store bellow chosen workers, so that action & state need not containing the device ID
+            # 3.1 find the closest devices as compute candidates
+            pass
+            # 3.2 find devices with the target application as filestore candidates
+            pass
+            # 3.3 find devicces with the target layers as depository candidates
+            # TODO: depository workers have two ways to choose: 1. all candidates 2. a target worker
+            # if use the first one, we should modify the provider method of Task class
+            
+        # 4. return the new state
