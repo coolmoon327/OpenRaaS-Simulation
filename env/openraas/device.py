@@ -1,7 +1,6 @@
-import imp
+from timeit import default_timer
 import numpy as np
 from .task import *
-from .topology import *
 
 class Device(object):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
@@ -9,8 +8,12 @@ class Device(object):
         self.capacity = [cpu, mem, bw]
         self.isOpen = isOpen        # Whether the operating system is open to developers or not
         self.isMobile = isMobile    # Whether the device is mobile or fixed
+        
         self.layers = []    # IDs of stored container layers
+        self.timers = []    # timers of stored container layers
+        self.default_timer = 5  # servers' timer is -1 so that they won't release layers
         self.apps = []      # IDs of stored app data
+        
         self.cal_tasks: list[ProcessTask] = []         # serve as a compute worker
         self.metaos_tasks: list[StorageTask] = []      # serve as a filestore worker
         self.image_tasks: list[DesktopTask] = []       # serve as a depository worker
@@ -52,6 +55,57 @@ class Device(object):
         for task in self.cal_tasks:
             cpu += task.cpu
         return cpu
+    
+    ### layer management
+    def fetch_layer(self, layer):
+        # check if the layer is missing
+        if layer in self.layers:
+            print(f"The layer {layer.id} exists in this device {self.id}.")
+            return
+        # add the missing layer into self repository
+        self.layers.append(layer.id)
+        self.timers.append(self.default_timer)
+        layer.add_host(self.id)
+    
+    def remove_layer(self, layer):
+        if layer not in self.layers:
+            raise ValueError(f"The layer {layer.id} does not exist in this device {self.id}.")
+        i = self.layers.index(layer.id)
+        self.layers.remove(self.layers[i])
+        self.timers.remove(self.timers[i])
+        layer.remove_host(self.id)
+    
+    def check_layer_timeout(self):
+        timeout_layer_index = []
+        for i in range(self.timers.__len__()):
+            if self.timers[i] == 0:
+                # don't use <= 0, because servers' timers are negative and they don't release layers
+                timeout_layer_index.append(i)
+        return timeout_layer_index
+    
+    def find_missing_layers(self, task):
+        ml = []
+        for layer in task.app.env_layers:
+            if layer.id not in self.layers:
+                ml.append(layer.id)
+        return ml
+    
+    def refresh_layer_timers(self, layer=None, task=None):
+        if task:
+            for l in task.app.env_layers:
+                if l.id in self.layers:
+                    i = self.layers.index(l.id)
+                    self.timers[i] = self.default_timer
+        if layer:
+            if layer.id in self.layers:
+                i = self.layers.index(layer.id)
+                self.timers[i] = self.default_timer
+    
+    def push_layer(self, layer):
+        if layer not in self.layers:
+            raise ValueError(f"The layer {layer.id} does not exist in this device {self.id}.")
+        self.refresh_layer_timers(layer=layer)
+        # TODO: occupation calculation
     
     ### tasks execution
     
@@ -102,6 +156,8 @@ class Device(object):
             self.cpu -= task.cpu
             self.mem -= task.mem
             self.bw -= task.bandwidth(0)
+            # TODO: fetch layers
+            self.refresh_layer_timers(task=task)
         elif microservice_type == 1:
             self.bw -= task.bandwidth(1)
             if task.type == 1:
@@ -109,6 +165,7 @@ class Device(object):
                 self.mem -= task.storage_size
         elif microservice_type == 2:
             self.bw -= task.bandwidth(2)
+            # TODO: push layers
     
     def release_task(self, microservice_type, task):
         '''release a target task from list
@@ -216,6 +273,7 @@ class Server(Device):
         isOpen = True
         isMobile = False
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
+        self.default_timer = -1 # do not release any layer
     
     def type(self):
         return 'server'

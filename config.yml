@@ -1,8 +1,13 @@
 # Environment
 
-M: 30     # number of edge servers
+M: 50     # number of edge servers
 N: 1000   # number of edge devices
-Network_num: 3  # number of edge areas
+area_num: 10  # number of edge areas
+
+candidates_num: 10  # shown filestore candidates number per task
+task_info_num: 5    # the properties number of a task
+compute_type_num: 3 # the categories number of compute workers
+filestore_info_num: 3 # the properties number of a filestore worker
 
 # Training
 

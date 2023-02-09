@@ -30,7 +30,7 @@ class Task(object):
     
     def reset(self):
         self.app = ApplicationList.get_arbitrary_data()(self.type)
-        self.providers = [-1, -1, -1]
+        self.providers = [-1, -1, []]
         self.life_time = self.span  # the rest time slot it can survive on the cloud
     
     def step(self):
@@ -39,13 +39,18 @@ class Task(object):
             raise TimeoutError(f"The task {self.id} is out of date, but nobody deals with it!")
     
     def set_provider(self, microservice_type, provider_id):
-        if 0 <= microservice_type < 4:
+        if 0 <= microservice_type < 2:
             self.providers[microservice_type] = provider_id
+        elif microservice_type == 2:
+            self.providers[2].append(provider_id)
         else:
             raise ValueError(f"Input microservice_type {microservice_type} is out of range!")
     
     def get_provider(self, microservice_type):
-        if 0 <= microservice_type < 4:
+        '''
+        microservice_type=2 will return a list of depositories
+        '''
+        if 0 <= microservice_type < 3:
             return self.providers[microservice_type]
         else:
             raise ValueError(f"Input microservice_type {microservice_type} is out of range!")

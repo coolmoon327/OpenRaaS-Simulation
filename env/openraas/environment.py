@@ -1,46 +1,77 @@
-from msilib.schema import Error
 import numpy as np
 from .device import *
 from .app import *
 from .task import *
+from .topology import *
+from gym import spaces
 
 class Environment(object):
     def __init__(self, config={}):
-        if len(config):
-            self.load_config(config)
         self.devices: list[Device] = []       # first M devices are servers -> self.devices[0:M]
         # scheduled_tasks stores tasks delivered to workers (in execution ones), while new_tasks stores just generated ones in this slot
         # these two taks lists cannot store any tasks in common or out-of-lifetime ones
         self.scheduled_tasks: list[Task] = []
         self.new_tasks: list[Task] = []
     
+        if len(config):
+            self.load_config(config)
+    
     def load_config(self, config):
+        self.config = config
         try:
             self.M = config['M']
             self.N = config['N']
+            self.candidates_num = config['candidates_num']    # candidates number per task
+            self.task_info_num = config['task_info_num']
+            self.compute_type_num = config['compute_type_num']
+            self.filestore_info_num = config['filestore_info_num']
+            self.topology = Topology(config['area_num'])
         except:
-            raise KeyError("Cannot find key M or N in config dict.")
+            raise KeyError("Cannot find environment keys in config dict.")
         self.reset()
+        self.reload_env_info()()
+    
+    def reload_env_info(self, tasks_num=1):
+        config = self.config
+        # State Design
+        self.n_actions = tasks_num  # tasks number per step
+        self.observation_space = spaces.Tuple([[[spaces.Box(-100., 100., (self.task_info_num))],     # 1. tasks information
+                                                [spaces.Discrete(self.compute_type_num)],            # 2. compute worker type (estimated by the global master)
+                                                [spaces.Discrete(self.M+self.N)],                    # 3. total filestore candidates number
+                                                [spaces.Box(-100., 100., (self.filestore_info_num)) for _ in range(self.candidates_num)]] # 4. the top candidates_num filestore candidates information
+                                               for __ in range(self.n_actions)])    # (n_actions, 4, ?)
+        
+        # Action Design: the selected index of given 10 filestores (for n_actions tasks)
+        # Each step may change the n_actions (because the tasks number is dynamic in different slots), so dislike other envs, engine should check the space per step
+        self.action_space = spaces.Tuple([spaces.Discrete(self.candidates_num) for _ in range(self.n_actions)]) # (n_actions)
     
     def reset(self):
         self.scheduled_tasks.clear()
         self.new_tasks.clear()
         
+        self.topology.reset()
+        
         M, N = self.M, self.N
         # generate devices
         self.devices.clear()
         for i in range(M):
-            self.devices.append(Server(i))
+            device = Server(i)
+            self.devices.append(device)
+            self.topology.add_device(device)
         for j in range(N):
             i = self.M + j
             r = np.random.rand(0,3)
             if r == 0:
-                self.devices.append(Desktop(i))
+                device = Desktop(i)
             elif r == 1:
-                self.devices.append(MobileDevice(i))
+                device = MobileDevice(i)
             else:
-                self.devices.append(IoTDevice(i))
-    
+                device = IoTDevice(i)
+            self.devices.append(device)
+            self.topology.add_device(device)
+
+        self.topology.check_areas() # debug
+        
         # distribute layers & applications
         # 1. at least one server storing this data
         List = LayerList
@@ -123,15 +154,19 @@ class Environment(object):
         # 2. enter next step and gain new states
         self.next()
         
+        self.reload_env_info(self.new_tasks.__len__())
+        
         # 3. organize state data
         for task in self.new_tasks:
             # TODO: use a temp list to store bellow chosen workers, so that action & state need not containing the device ID
             # 3.1 find the closest devices as compute candidates
             pass
-            # 3.2 find devices with the target application as filestore candidates
+            # 3.2 find devices with the target application as filestore candidates (return 10 candidates)
             pass
+        
             # 3.3 find devicces with the target layers as depository candidates
             # TODO: depository workers have two ways to choose: 1. all candidates 2. a target worker
             # if use the first one, we should modify the provider method of Task class
+            pass
             
         # 4. return the new state

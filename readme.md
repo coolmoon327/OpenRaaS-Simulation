@@ -78,8 +78,14 @@ Task execution:
 - Do not care the network balance. Use all the bandwidth for the current task, and let others wait in line.
 - The compute worker $C$ should care about **the download link from meta OS**
 - Mounting files does not occupy all bandwidth at once, so we set a fixed value of 8 Mbps (1 MBps).
-- Uplink and downlink bandwidth are calculated together
+- Uplink and downlink bandwidth are calculated together.
 - Once a worker performs computation services, it will preserve the requested resource until task finishing. If it has a new demand, it will turn to ask for OpenRaaS services instead of blocking the ongoing tasks.
+
+For depository:
+
+- Computation cost can be ignored.
+- A computation worker who fetched layers can become the depository of those layers.
+- All layers on a node has timers to make them survive. When using ($C$) or pushing ($D$) a layer, its timer resets.
 
 ## C. Scheduling
 
@@ -87,23 +93,23 @@ Task execution:
 
 **Compute worker $C$:**
 
-1. Servers with enough resource
-2. Open desktops with enough resource
-3. Fixed IoT devices with enough resource
+1. Fixed & open devices with enough resource
+2. Should has enough storage to contain the missing layers
 
 - When checking the storage space, it should substract the size of existing layers first.
+- After a task finished, it should check its remaining storage (> 1GB) or else release the oldest layers
 
 **Filestore worker $F$:**
 
-a) $F$ for mounting:
+1. Fixed devices with target files
 
-1. Servers with target files
-2. Desktops with target files
-3. Fixed IoT devices with target files
+<!-- a) $F$ for mounting:
+
+1. Fixed devices with target files
 
 b) $F$ for storage services:
 
-1. Two servers and two other devices with enough resource (totally 4 backups)
+1. A server and another device with enough resource (totally 2 backups) -->
 
 **Depository worker $D$:**
 

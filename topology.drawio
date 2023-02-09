@@ -1,0 +1,169 @@
+<mxfile host="65bd71144e">
+    <diagram id="8eT60heGp0snCYeR3oEI" name="第 1 页">
+        <mxGraphModel dx="1401" dy="1414" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="2" value="" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="230" y="240" width="270" height="170" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="Global Master" style="shape=ext;double=1;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="310" y="295" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="4" value="Data Center" style="shape=ext;double=1;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="380" y="295" width="60" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="5" value="" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=12 12;" vertex="1" parent="1">
+                    <mxGeometry x="90" y="455" width="260" height="245" as="geometry"/>
+                </mxCell>
+                <mxCell id="6" value="Edge Area 1" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="175" y="470" width="90" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="7" value="Edge Server" style="shape=ext;double=1;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="110" y="520" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="8" value="Edge Server" style="shape=ext;double=1;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="280" y="520" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="9" value="Client" style="ellipse;shape=doubleEllipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="105" y="630" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="10" value="Client" style="ellipse;shape=doubleEllipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="225" y="630" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="12" value="Client" style="ellipse;shape=doubleEllipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="285" y="630" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="22" value="Base Station" style="rhombus;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="185" y="510" width="70" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="39" value="Client" style="ellipse;shape=doubleEllipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="165" y="630" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="40" value="" style="line;strokeWidth=3;html=1;perimeter=backbonePerimeter;points=[];outlineConnect=0;" vertex="1" parent="1">
+                    <mxGeometry x="255" y="540" width="25" height="10" as="geometry"/>
+                </mxCell>
+                <mxCell id="41" value="" style="line;strokeWidth=3;html=1;perimeter=backbonePerimeter;points=[];outlineConnect=0;" vertex="1" parent="1">
+                    <mxGeometry x="160" y="540" width="25" height="10" as="geometry"/>
+                </mxCell>
+                <mxCell id="42" value="" style="endArrow=none;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;dashed=1;dashPattern=12 12;" edge="1" parent="1" source="10" target="22">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="530" y="530" as="sourcePoint"/>
+                        <mxPoint x="580" y="480" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="43" value="" style="endArrow=none;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;dashed=1;dashPattern=12 12;" edge="1" parent="1" source="12" target="22">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="260" y="640" as="sourcePoint"/>
+                        <mxPoint x="239.13043478260852" y="580.8695652173913" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="44" value="" style="endArrow=none;html=1;dashed=1;dashPattern=12 12;" edge="1" parent="1" source="39" target="22">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="270" y="650" as="sourcePoint"/>
+                        <mxPoint x="249.13043478260852" y="590.8695652173913" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="45" value="" style="endArrow=none;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;dashed=1;dashPattern=12 12;" edge="1" parent="1" source="9" target="22">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="280" y="660" as="sourcePoint"/>
+                        <mxPoint x="259.1304347826085" y="600.8695652173913" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="47" value="" style="endArrow=none;html=1;entryX=0.31;entryY=0.8;entryDx=0;entryDy=0;entryPerimeter=0;exitX=1;exitY=0;exitDx=0;exitDy=0;strokeWidth=5;endSize=5;" edge="1" parent="1" source="22" target="2">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="250" y="450" as="sourcePoint"/>
+                        <mxPoint x="300" y="400" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="48" value="Bandwidth: 500 Gbps&lt;br&gt;Latency: 10 ms" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="155" y="390" width="140" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="49" value="Latency: 2 ms" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="-35" y="535" width="100" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="50" value="Latency: 7 ms" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="-35" y="650" width="100" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="51" value="* Edge Devices' bandwidth depends on their network interfaces&lt;br&gt;&lt;div style=&quot;text-align: left;&quot;&gt;&lt;span style=&quot;background-color: initial;&quot;&gt;** Latencies here are only used to show the approximate range&lt;/span&gt;&lt;/div&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="-35" y="760" width="360" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="52" value="" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=12 12;" vertex="1" parent="1">
+                    <mxGeometry x="450" y="455" width="260" height="245" as="geometry"/>
+                </mxCell>
+                <mxCell id="53" value="Edge Area 2" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="535" y="470" width="90" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="54" value="Edge Server" style="shape=ext;double=1;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="470" y="520" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="55" value="Edge Server" style="shape=ext;double=1;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="640" y="520" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="56" value="Client" style="ellipse;shape=doubleEllipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="465" y="630" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="57" value="Client" style="ellipse;shape=doubleEllipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="585" y="630" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="58" value="Client" style="ellipse;shape=doubleEllipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="645" y="630" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="59" value="Base Station" style="rhombus;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                    <mxGeometry x="545" y="510" width="70" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="60" value="Client" style="ellipse;shape=doubleEllipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+                    <mxGeometry x="525" y="630" width="50" height="50" as="geometry"/>
+                </mxCell>
+                <mxCell id="61" value="" style="line;strokeWidth=3;html=1;perimeter=backbonePerimeter;points=[];outlineConnect=0;" vertex="1" parent="1">
+                    <mxGeometry x="615" y="540" width="25" height="10" as="geometry"/>
+                </mxCell>
+                <mxCell id="62" value="" style="line;strokeWidth=3;html=1;perimeter=backbonePerimeter;points=[];outlineConnect=0;" vertex="1" parent="1">
+                    <mxGeometry x="520" y="540" width="25" height="10" as="geometry"/>
+                </mxCell>
+                <mxCell id="63" value="" style="endArrow=none;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;dashed=1;dashPattern=12 12;" edge="1" parent="1" source="57" target="59">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="890" y="530" as="sourcePoint"/>
+                        <mxPoint x="940" y="480" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="64" value="" style="endArrow=none;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;dashed=1;dashPattern=12 12;" edge="1" parent="1" source="58" target="59">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="620" y="640" as="sourcePoint"/>
+                        <mxPoint x="599.1304347826085" y="580.8695652173913" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="65" value="" style="endArrow=none;html=1;dashed=1;dashPattern=12 12;" edge="1" parent="1" source="60" target="59">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="630" y="650" as="sourcePoint"/>
+                        <mxPoint x="609.1304347826085" y="590.8695652173913" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="66" value="" style="endArrow=none;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;dashed=1;dashPattern=12 12;" edge="1" parent="1" source="56" target="59">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="640" y="660" as="sourcePoint"/>
+                        <mxPoint x="619.1304347826085" y="600.8695652173913" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="67" value="" style="endArrow=none;html=1;entryX=0.8;entryY=0.8;entryDx=0;entryDy=0;entryPerimeter=0;exitX=0;exitY=0;exitDx=0;exitDy=0;strokeWidth=5;endSize=5;" edge="1" parent="1" source="59" target="2">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="247.5" y="537.5" as="sourcePoint"/>
+                        <mxPoint x="323.6999999999998" y="386" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="68" value="Latency: 3 ms" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="730" y="530" width="100" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="69" value="Latency: 5 ms" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="730" y="640" width="100" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="70" value="Bandwidth: 100 Gbps&lt;br&gt;Latency: 6 ms" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="500" y="390" width="140" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="71" value="We can use an edge area to simulate the remote cloud, where generates no tasks but provide all kinds of cloud services.&lt;br&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="20" y="840" width="660" height="30" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

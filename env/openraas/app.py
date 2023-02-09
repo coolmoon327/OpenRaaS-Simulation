@@ -21,6 +21,9 @@ class Data(object):
     def add_host(self, host_id: int):
         self.hosts.append(host_id)
     
+    def remove_host(self, host_id: int):
+        self.hosts.remove(host_id)
+    
     def print_type(self):
         return "basic data"
 
@@ -61,12 +64,12 @@ class Application(Data):
 
 
 class LayerList(object):
-    layers: list[ContainerLayer] = []  # store all layers, and sort by id
-    os_layers: list[ContainerLayer] = []
-    driver_layers: list[ContainerLayer] = []
-    lib_layers: list[ContainerLayer] = []
-    exec_layers: list[ContainerLayer] = []
-    compatible_layers: list[ContainerLayer] = []
+    layers = []  # store all layers, and sort by id
+    os_layers = []
+    driver_layers = []
+    lib_layers = []
+    exec_layers = []
+    compatible_layers = []
     type_num = 5
     
     @classmethod
@@ -158,10 +161,10 @@ class LayerList(object):
     
     
 class ApplicationList(object):
-    apps: list[Application] = [] # store all applications, and sort by id
-    process_apps: list[Application] = []
-    storage_apps: list[Application] = []
-    desktop_apps: list[Application] = []
+    apps = [] # store all applications, and sort by id
+    process_apps = []
+    storage_apps = []
+    desktop_apps = []
     type_num = 3
     
     @classmethod
