@@ -5,6 +5,7 @@ task_num = 0
 
 class Task(object):
     def __init__(self, type, cpu, mem, user_id=-1, span=1):
+        # TODO: add QoS & billing method
         self.cpu = cpu
         self.mem = mem
         self.user_id = user_id
@@ -26,6 +27,7 @@ class Task(object):
         
         uplink and downlink are calculated together
         '''
+        # TODO:  need checking & modifying
         return 0
     
     def reset(self):

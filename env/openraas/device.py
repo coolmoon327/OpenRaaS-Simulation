@@ -59,13 +59,17 @@ class Device(object):
     ### layer management
     def fetch_layer(self, layer):
         # check if the layer is missing
-        if layer in self.layers:
+        if layer.id in self.layers:
             print(f"The layer {layer.id} exists in this device {self.id}.")
             return
+        if self.mem < layer.size:
+            raise ValueError(f"The layer {layer.id} size {layer.size} is larger than remain space {self.mem} of device {self.id}.")
         # add the missing layer into self repository
         self.layers.append(layer.id)
         self.timers.append(self.default_timer)
         layer.add_host(self.id)
+        # resource changes
+        self.mem -= layer.size
     
     def remove_layer(self, layer):
         if layer not in self.layers:
@@ -74,6 +78,8 @@ class Device(object):
         self.layers.remove(self.layers[i])
         self.timers.remove(self.timers[i])
         layer.remove_host(self.id)
+        # resource changes
+        self.mem += layer.size
     
     def check_layer_timeout(self):
         timeout_layer_index = []
@@ -106,6 +112,9 @@ class Device(object):
             raise ValueError(f"The layer {layer.id} does not exist in this device {self.id}.")
         self.refresh_layer_timers(layer=layer)
         # TODO: occupation calculation
+        # We use all depositories working in the P2P file-sharing mode, so everyone only spends a piece of bandwidth
+        # The details should be implemented in the environment.py
+        pass
     
     ### tasks execution
     
@@ -123,18 +132,39 @@ class Device(object):
         '''check whether the task can be executed in this device with microservice_type'''
         ans = True
         if microservice_type == 0:
-            if task.cpu > self.cpu or task.mem > self.mem or task.bandwidth(0) > self.bw:
+            if self.isMobile == True or self.isOpen == False or task.cpu > self.cpu or task.mem > self.mem or task.bandwidth(0) > self.bw:
                 ans = False
-        elif microservice_type == 1:
+            else:
+                # remain env space check
+                required_env_space = 0.
+                for layer in task.app.env_layers:
+                    if layer.id not in self.layers:
+                        required_env_space += layer.size
+                if required_env_space > self.mem:
+                    ans = False
+        elif self.isMobile == True or microservice_type == 1:
             if task.bandwidth(1) > self.bw:
                 ans = False
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
                 if task.storage_size > self.mem:
                     ans = False
+            # app check
+            else:
+                if task.app.id not in self.apps:
+                    ans = False
         elif microservice_type == 2:
             if task.bandwidth(2) > self.bw:
                 ans = False
+            else:
+                # env layer check
+                any_layer_existing = False
+                for layer in task.app.env_layers:
+                    if layer.id in self.layers:
+                        any_layer_existing = True
+                        break
+                if not any_layer_existing:
+                    ans = False
         else:
             raise ValueError(f"Input microservice_type {microservice_type} is out of range!")
         return ans
@@ -151,21 +181,33 @@ class Device(object):
             raise ValueError(f"The task with id {task.id} cannot be handled by device {self.id} in microservice_type {microservice_type}")
         tasks.append(task)
         task.set_provider(microservice_type, self.id)   # TODO: check whether this setting takes effect in the global
+        
         # resource occupation
         if microservice_type == 0:
             self.cpu -= task.cpu
-            self.mem -= task.mem
             self.bw -= task.bandwidth(0)
-            # TODO: fetch layers
-            self.refresh_layer_timers(task=task)
+            if task.type != 1:
+                # in a storage task, compute worker only forward user data
+                self.mem -= task.mem
+            # fetch layers
+            for layer in task.app.env_layers:
+                if layer.id not in self.layers:
+                    self.fetch_layer(layer)
+                else:
+                    self.refresh_layer_timers(layer=layer)
+        
         elif microservice_type == 1:
             self.bw -= task.bandwidth(1)
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
                 self.mem -= task.storage_size
+        
         elif microservice_type == 2:
             self.bw -= task.bandwidth(2)
-            # TODO: push layers
+            # push layers
+            for layer in task.app.env_layers:
+                if layer.id in self.layers:
+                    self.push_layer(layer=layer)
     
     def release_task(self, microservice_type, task):
         '''release a target task from list

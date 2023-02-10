@@ -60,6 +60,7 @@ class Application(Data):
         self.env_layers: list[ContainerLayer] = []
     
     def print_type(self):
+        # TODO: enrich application types
         return "app"
 
 

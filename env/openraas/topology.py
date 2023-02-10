@@ -85,7 +85,7 @@ class Topology(object):
             ans += self.areas[a1].backbone.latency + self.areas[a2].backbone.latency
         return ans
     
-    def cal_delay_between_devices(self, device1: Device, device2: Device):
+    def cal_latency_between_devices(self, device1: Device, device2: Device):
         return self.cal_latency_between_devices_by_id(device1.id, device2.id)
     
     def cal_transmit_delay_between_devices_by_id(self, d1: int, d2: int, filesize):

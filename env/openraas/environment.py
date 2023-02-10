@@ -12,6 +12,7 @@ class Environment(object):
         # these two taks lists cannot store any tasks in common or out-of-lifetime ones
         self.scheduled_tasks: list[Task] = []
         self.new_tasks: list[Task] = []
+        self.fs_candidates = [] # filestore worker candidates in a slot
     
         if len(config):
             self.load_config(config)
@@ -48,6 +49,7 @@ class Environment(object):
     def reset(self):
         self.scheduled_tasks.clear()
         self.new_tasks.clear()
+        self.fs_candidates.clear()
         
         self.topology.reset()
         
@@ -84,10 +86,8 @@ class Environment(object):
                     while not self.devices[index].is_enough_for_storing(data):
                         index = index+1 if index < M-1 else 0
                         if index == ori:
-                            ori = -1    # all M servers cannot store it, set error flag
-                            break
-                    if ori == -1:
-                        raise ValueError(f"Data with id {data.id} cannot be stored in any a server!")
+                            # all M servers cannot store it, set error flag
+                            raise ValueError(f"Data with id {data.id} cannot be stored in any a server!")
                     self.devices[index].store_data(data)    # TODO: host_id is appended in this method. if not, check it
             List = ApplicationList
         # 2. every device has chance to store some arbitrary data
@@ -97,13 +97,13 @@ class Environment(object):
                 r1 = np.random.randint(0, 10)
                 if r1 > 3:   # 20%
                     break
-                # b) layer or app
-                r2 = np.random.randint(0, 2)
+                # b) layer 80% or app 20%
+                r2 = np.random.randint(0, 4)
                 for _ in range(2):
                     if r2 == 0:
-                        List = LayerList
-                    else:
                         List = ApplicationList
+                    else:
+                        List = LayerList
                     # c) data
                     data = List.get_arbitrary_data()
                     timer = 10  # random times
@@ -116,11 +116,17 @@ class Environment(object):
                     else:
                         r2 = not r2
     
+    def get_observation(self):
+        for i in range(self.n_actions):
+            # TODO: implement it
+            pass
+    
     def next(self):
         M, N = self.M, self.N
         
         # 1. clear instant cache of the last slot
         self.new_tasks.clear() 
+        self.fs_candidates.clear()
         
         # 2. update devices state
         for device in self.devices:
@@ -133,10 +139,14 @@ class Environment(object):
             task.step()
             if task.life_time == 0: # out of lifetime
                 removed_tasks.append(task)
-                for t in range(3):
-                    device = self.devices[task.get_provider(t)]
-                    device.release_task(t, task)
-                    # TODO: settle a bill
+                self.devices[task.get_provider(0)].release_task(0, task)
+                self.devices[task.get_provider(1)].release_task(1, task)
+                depositories = task.get_provider(2)
+                for d in depositories:
+                    self.devices[d].release_task(2, task)
+                
+                # TODO: settle a bill
+                pass
                 
         for task in removed_tasks:
             self.scheduled_tasks.remove(task)
@@ -147,26 +157,70 @@ class Environment(object):
             self.new_tasks += self.devices[i].req_tasks
     
     def step(self, action):
+        if len(action) != len(self.new_tasks):
+            raise ValueError(f"Action_space with length {len(action)} does not equal to the tasks number {len(self.new_tasks)}!")
+        
         # 1. execute service composition
-        pass
-        # add newly executed ones in scheduled_tasks
-    
+        for i in range(action):
+            task = self.new_tasks[i]
+            task.set_provider(1, self.fs_candidates[action[i]])
+            if task.get_provider(0) == -1 or task.get_provider(1) == -1 or len(task.get_provider(2)) == 0:
+                # this task cannot be composed
+                continue
+            # resource changes
+            self.devices[task.get_provider(0)].allocate_tasks(0, task)
+            self.devices[task.get_provider(1)].allocate_tasks(1, task)
+            for d in task.get_provider(2):
+                self.devices[d].allocate_tasks(1, task)  
+            # add newly executed ones in scheduled_tasks
+            self.scheduled_tasks.append(task)
+            
         # 2. enter next step and gain new states
         self.next()
         
+        # 3. regenerate env info
         self.reload_env_info(self.new_tasks.__len__())
         
-        # 3. organize state data
+        # 4. organize state data
+        minn = 1e6
+        target_c = -1
         for task in self.new_tasks:
             # TODO: use a temp list to store bellow chosen workers, so that action & state need not containing the device ID
             # 3.1 find the closest devices as compute candidates
-            pass
+            edge_area = self.topology.areas[self.topology.device_to_area[task.user_id]]
+            for device in edge_area.devices:
+                if device.id == task.user_id or not device.check_task_availability(0, task):
+                    continue
+                l = self.topology.cal_latency_between_devices_by_id(device.id, task.user_id)
+                if l < minn:
+                    minn = l
+                    target_c = device.id
+            task.set_provider(0, target_c)
+            
             # 3.2 find devices with the target application as filestore candidates (return 10 candidates)
             pass
+            # 3.2.1 finds all available devices
+            # 3.2.2 calculate their priorities
+            # 3.2.3 sort by priority and take the first 10 devices
+            # TODO: implement it
         
             # 3.3 find devicces with the target layers as depository candidates
-            # TODO: depository workers have two ways to choose: 1. all candidates 2. a target worker
+            # depository workers have two ways to choose: 1. all candidates 2. a target worker
             # if use the first one, we should modify the provider method of Task class
-            pass
+            missing_layers = self.devices[target_c].find_missing_layers(task)
+            depositories = []
+            for layer_id in missing_layers:
+                layer = LayerList.get_data_by_id(layer_id)
+                if len(layer.hosts) == 0:
+                    # cannot execute this task because of layer lacking, dropping in the service compostion step
+                    depositories = []
+                    break
+                depositories += layer.hosts
+                # TODO: how about bandwidth?
+            for d_id in depositories:
+                task.set_provider(2, d_id)
             
-        # 4. return the new state
+        # 5. return the new state
+        # some task with long span cannot get instantaneous reward
+        # TODO: maybe we should temporally store those state until its reward generated?
+        # Or we settle its bill by estimation instead of waiting to finish the task
