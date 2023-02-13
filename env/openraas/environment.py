@@ -1,3 +1,4 @@
+from distutils.command.clean import clean
 import numpy as np
 from .device import *
 from .app import *
@@ -37,9 +38,9 @@ class Environment(object):
         # State Design
         self.n_actions = tasks_num  # tasks number per step
         self.observation_space = spaces.Tuple([[[spaces.Box(-100., 100., (self.task_info_num))],     # 1. tasks information
-                                                [spaces.Discrete(self.compute_type_num)],            # 2. compute worker type (estimated by the global master)
+                                                [spaces.Discrete(self.compute_type_num)],            # 2. compute worker information: type (estimated by the global master), interface bandwidth
                                                 [spaces.Discrete(self.M+self.N)],                    # 3. total filestore candidates number
-                                                [spaces.Box(-100., 100., (self.filestore_info_num)) for _ in range(self.candidates_num)]] # 4. the top candidates_num filestore candidates information
+                                                [spaces.Box(-100., 100., (self.filestore_info_num)) for _ in range(self.candidates_num)]] # 4. information of the top candidates_num priorities
                                                for __ in range(self.n_actions)])    # (n_actions, 4, ?)
         
         # Action Design: the selected index of given 10 filestores (for n_actions tasks)
@@ -47,6 +48,8 @@ class Environment(object):
         self.action_space = spaces.Tuple([spaces.Discrete(self.candidates_num) for _ in range(self.n_actions)]) # (n_actions)
     
     def reset(self):
+        # TODO: In a RL game, maybe we should not reset the topology so that the agent can learn more potential details in its neu-network
+        
         self.scheduled_tasks.clear()
         self.new_tasks.clear()
         self.fs_candidates.clear()
@@ -116,11 +119,6 @@ class Environment(object):
                     else:
                         r2 = not r2
     
-    def get_observation(self):
-        for i in range(self.n_actions):
-            # TODO: implement it
-            pass
-    
     def next(self):
         M, N = self.M, self.N
         
@@ -139,11 +137,19 @@ class Environment(object):
             task.step()
             if task.life_time == 0: # out of lifetime
                 removed_tasks.append(task)
-                self.devices[task.get_provider(0)].release_task(0, task)
-                self.devices[task.get_provider(1)].release_task(1, task)
+                compute = self.devices[task.get_provider(0)]
+                filestore = self.devices[task.get_provider(1)]
                 depositories = task.get_provider(2)
+                
+                compute.release_task(0, task)
+                filestore.release_task(1, task)
+                self.topology.release_between_devices(client, compute, task.bandwidth(0))
+                self.topology.release_between_devices(compute, filestore, task.bandwidth(1))
+                
                 for d in depositories:
-                    self.devices[d].release_task(2, task)
+                    depository = self.devices[d]
+                    depository.release_task(2, task)
+                    self.topology.release_between_devices(compute, depository, task.bandwidth(3))
                 
                 # TODO: settle a bill
                 pass
@@ -160,18 +166,33 @@ class Environment(object):
         if len(action) != len(self.new_tasks):
             raise ValueError(f"Action_space with length {len(action)} does not equal to the tasks number {len(self.new_tasks)}!")
         
+        # TODO: add something about topology.occupied_time to estimate the real delay
+        
         # 1. execute service composition
         for i in range(action):
             task = self.new_tasks[i]
             task.set_provider(1, self.fs_candidates[action[i]])
-            if task.get_provider(0) == -1 or task.get_provider(1) == -1 or len(task.get_provider(2)) == 0:
+            client = self.devices[task.user_id]
+            
+            if task.get_provider(0) == -1 or task.get_provider(1) == -1 or len(task.get_provider(2)) == 0 or task.bandwidth(0) > client.bw:
                 # this task cannot be composed
                 continue
+            
+            compute = self.devices[task.get_provider(0)]
+            filestore = self.devices[task.get_provider(1)]
+            depositories = task.get_provider(2)
+            
             # resource changes
-            self.devices[task.get_provider(0)].allocate_tasks(0, task)
-            self.devices[task.get_provider(1)].allocate_tasks(1, task)
-            for d in task.get_provider(2):
-                self.devices[d].allocate_tasks(1, task)  
+            compute.allocate_tasks(0, task)
+            filestore.allocate_tasks(1, task)
+            self.topology.transmit_between_devices(client, compute, task.bandwidth(0))
+            self.topology.transmit_between_devices(compute, filestore, task.bandwidth(1))
+            
+            for d in depositories:
+                depository = self.devices[d]
+                depository.allocate_tasks(1, task) 
+                self.topology.transmit_between_devices(compute, depository, task.bandwidth(3))
+            
             # add newly executed ones in scheduled_tasks
             self.scheduled_tasks.append(task)
             
@@ -182,29 +203,36 @@ class Environment(object):
         self.reload_env_info(self.new_tasks.__len__())
         
         # 4. organize state data
+        state = []
         minn = 1e6
         target_c = -1
         for task in self.new_tasks:
             # TODO: use a temp list to store bellow chosen workers, so that action & state need not containing the device ID
-            # 3.1 find the closest devices as compute candidates
+            # 4.1 find the closest devices as compute candidates
             edge_area = self.topology.areas[self.topology.device_to_area[task.user_id]]
             for device in edge_area.devices:
                 if device.id == task.user_id or not device.check_task_availability(0, task):
                     continue
-                l = self.topology.cal_latency_between_devices_by_id(device.id, task.user_id)
+                _, l, _  = self.topology.get_link_states_between_devices(device.id, task.user_id)
                 if l < minn:
                     minn = l
                     target_c = device.id
             task.set_provider(0, target_c)
             
-            # 3.2 find devices with the target application as filestore candidates (return 10 candidates)
-            pass
-            # 3.2.1 finds all available devices
-            # 3.2.2 calculate their priorities
-            # 3.2.3 sort by priority and take the first 10 devices
-            # TODO: implement it
-        
-            # 3.3 find devicces with the target layers as depository candidates
+            # 4.2 find devices with the target application as filestore candidates (return 10 candidates)
+            # 4.2.1 finds all available devices
+            avail_fs =  task.app.hosts
+            # 4.2.2 calculate their priorities
+            # TODO: temporally use the interface latency to sort, modify it in need
+            dict_p = {}
+            for fs_id in avail_fs:
+                line = self.topology.get_device_interface_link_by_id(fs_id)
+                dict_p[fs_id] = line.bandwidth
+            
+            # 4.2.3 sort by priority and take the first 10 devices
+            dict_p = dict(sorted(dict_p.items(), key=lambda item: -item[1]))
+                
+            # 4.3 find devicces with the target layers as depository candidates
             # depository workers have two ways to choose: 1. all candidates 2. a target worker
             # if use the first one, we should modify the provider method of Task class
             missing_layers = self.devices[target_c].find_missing_layers(task)
@@ -219,8 +247,30 @@ class Environment(object):
                 # TODO: how about bandwidth?
             for d_id in depositories:
                 task.set_provider(2, d_id)
-            
+        
+            # 4.4 arrange the observation
+            task_info = [task.cpu, task.mem, task.span]
+            # TODO: set the worker type
+            worker_info = [0, self.topology.get_device_interface_link_by_id(target_c).bandwidth]
+            candidates_num = len(avail_fs)
+            prior_candidates = list(dict_p.keys())
+            candidates_info = [candidates_num]
+            for fs_id in prior_candidates:
+                fs = self.devices[fs_id]
+                interface = self.topology.get_device_interface_link_by_id(fs_id)
+                candidates_info.append(interface.bandwidth, interface.latency, interface.jilter)
+                
+            state.append(task_info+worker_info+candidates_info)
+        
         # 5. return the new state
         # some task with long span cannot get instantaneous reward
         # TODO: maybe we should temporally store those state until its reward generated?
         # Or we settle its bill by estimation instead of waiting to finish the task
+        
+        # TODO: We should build a database to store the executing task info
+        # 1. self.scheduled_tasks
+        # 2. states before those tasks
+        # 3. states after those tasks (randomly choose a task state in next slot)
+        # 4. reward
+        
+        return state

@@ -2,10 +2,18 @@ import numpy as np
 from .device import *
 
 class Line(object):
-    def __init__(self, bandwidth, latency):
+    def __init__(self, bandwidth, latency, jilter):
         self.bandwidth = bandwidth  # MBps
         self.latency = latency      # ms
+        self.jilter = jilter        # mean jilter times in a slot
+        
+        self.occupied_time = 0.     # the fully occupied time interval in this slot
+        # in each slot, first serve those tasks with long span, and then using all bandwidth for data transfer tasks one by one
+        # but we do not care about the left bandwidth (4-3-5, left 1-0-2) for easy 
 
+    def get_jilter(self):
+        ans = max(self.jilter + self.jilter/3 * np.random.randn(1)[0], 0.)  # 0 ~ 2 mean_jilter
+        return ans
 
 class Area(object):
     def __init__(self, id):
@@ -20,7 +28,8 @@ class Area(object):
         
         bw = max(300 + 100 * np.random.randn(1)[0], 1.)*1000/8 # (1 ~ 500)/8 GBps
         l = max(10 + 3 * np.random.randn(1)[0], 1.) # 1 ~ 19 ms
-        self.backbone = Line(bw, l)
+        j = max(5 + 1 * np.random.randn(1)[0], 0) # 2 ~ 8
+        self.backbone = Line(bw, l, j)
 
     def add_device(self, type: int, device_id: int, bandwidth=0):
         """
@@ -29,18 +38,20 @@ class Area(object):
         """
         if type == 0:
             l = max(3 + 1 * np.random.randn(1)[0], 1.) # wire 1 ~ 6 ms
+            j = max(4 + 1 * np.random.randn(1)[0], 0) # 1 ~ 7
         elif type == 1:
             l = max(7 + 2 * np.random.randn(1)[0], 1.) # wireless 1 ~ 13 ms
+            j = max(6 + 2 * np.random.randn(1)[0], 0) # 0 ~ 12
         else:
             raise ValueError(f"The input line type {type} is out of range!")
         
         self.devices.append(device_id)
-        self.lines.append(Line(bandwidth, l))
+        self.lines.append(Line(bandwidth, l, j))
         
     def update_bandwidth(self, device_id: int, bandwidth):
         """We should update bandwidth information once changed."""
         i = self.devices.index(device_id)
-        self.lines[i] = bandwidth
+        self.lines[i].bandwidth = bandwidth
     
 
 class Topology(object):
@@ -54,61 +65,103 @@ class Topology(object):
         for area in self.areas:
             area.reset()
     
+    def get_area_by_device_id(self, device_id: int):
+        return self.areas[self.device_to_area[device_id]]
+    
+    def get_area_by_device(self, device: Device):
+        return self.get_area_by_device_id(device.id)
+    
+    def get_device_interface_link_by_id(self, device_id: int):
+        area = self.get_area_by_device_id(device_id)
+        return area.lines[area.devices.index(device_id)]
+    
+    def get_device_interface_link(self, device: Device):
+        self.get_device_interface_link_by_id(device.id)
+    
     def add_device(self, device: Device, area_id=-1):
         if area_id == -1:
             area_id = np.random.randint(0, self.area_num)
         type = 0 if device.type() == 'server' else 1
-        self.areas[area_id].add_device(type, device.id, device.bw)
+        self.areas[area_id].add_device(type, device.id, device.max_bandwidth())
         self.device_to_area[device.id] = area_id
     
-    def update_bandwidth(self, device: Device):
-        area_id = self.device_to_area[device.id]
-        self.areas[area_id].update_bandwidth(device.id, device.bw)
-    
-    def cal_latency_between_devices_by_id(self, d1: int, d2: int):
-        """Only calculate the line latency.
-        We need another method to calculate the transmit delay.
+    def transmit_between_devices(self, device1: Device, device2: Device, datasize):
+        """update the bandwidth occupation
+
+        Args:
+            device1 (Device): device 1
+            device2 (Device): device 2
+            datasize (float): size of the transmitted file (MB)
         
-        Args:
-            d1 (int): device 1 id
-            d2 (int): device 2 id
-
         Returns:
-            _type_: _description_
+            speed: minimum bandwith on the link
+            latency: total latency
+            jilter: total sampledd jilters
+        
         """
-        a1 = self.device_to_area[d1]
-        a2 = self.device_to_area[d2]
-        i1 = self.areas[a1].devices.index(d1)
-        i2 = self.areas[a2].devices.index(d2)
-        ans = self.areas[a1].lines[i1].latency + self.areas[a2].lines[i2].latency
+        a1 = self.get_area_by_device_id(device1.id)
+        a2 = self.get_area_by_device_id(device2.id)
+        i1 = self.get_device_interface_link_by_id(device1.id)
+        i2 = self.get_device_interface_link_by_id(device2.id)
+        
+        i1.bandwidth -= datasize
+        i2.bandwidth -= datasize
+        device1.bw = i1.bandwidth
+        device2.bw = i2.bandwidth
+        
         if a1 != a2:
-            ans += self.areas[a1].backbone.latency + self.areas[a2].backbone.latency
-        return ans
+            a1.backbone.bandwidth -= datasize
+            a2.backbone.bandwidth -= datasize
     
-    def cal_latency_between_devices(self, device1: Device, device2: Device):
-        return self.cal_latency_between_devices_by_id(device1.id, device2.id)
+    def release_between_devices(self, device1: Device, device2: Device, datasize):
+        return self.transmit_between_devices(device1, device2, -datasize)
     
-    def cal_transmit_delay_between_devices_by_id(self, d1: int, d2: int, filesize):
-        """Only calculate the transmition delay of the file bewteen two devices
+    def get_link_states_between_devices_by_id(self, d1: int, d2: int):
+        """get link states between d1 and d2
 
         Args:
             d1 (int): device 1 id
             d2 (int): device 2 id
-            filesize (float): size of the transmitted file (MB)
+        
+        Returns:
+            speed: minimum bandwith on the link
+            latency: total latency
+            jilter: total sampledd jilters
+        
         """
-        a1 = self.device_to_area[d1]
-        a2 = self.device_to_area[d2]
-        i1 = self.areas[a1].devices.index(d1)
-        i2 = self.areas[a2].devices.index(d2)
-        # find the bottleneck of this line
-        bn = min(self.areas[a1].backbone.bandwidth, self.areas[a2].backbone.bandwidth)
-        bn = min(bn, self.areas[a1].lines[i1].bandwidth)
-        bn = min(bn, self.areas[a2].lines[i2].bandwidth)
-        ans = filesize / bn * 1000 # ms
+        a1 = self.get_area_by_device_id(d1)
+        a2 = self.get_area_by_device_id(d2)
+        i1 = self.get_device_interface_link_by_id(d1)
+        i2 = self.get_device_interface_link_by_id(d2)
+        
+        speed = min(i1.bandwidth, i2.bandwidth)
+        latency = i1.latency + i2.latency
+        jilter = i1.get_jilter() + i2.get_jilter()
+        if a1 != a2:
+            speed = min(speed, a1.backbone.bandwidth)
+            speed = min(speed, a2.backbone.bandwidth)
+            latency += a1.backbone.latency + a2.backbone.latency
+            jilter += a1.backbone.get_jilter() + a2.backbone.get_jilter()
+        
+        return speed, latency, jilter
+    
+    def get_link_states_between_devices(self, device1: Device, device2: Device):
+        return self.get_link_states_between_devices_by_id(device1.id, device2.id)
+    
+    def cal_transmit_delay_between_devices_by_id(self, d1: int, d2: int, datasize):
+        """Calculate the transmition delay of the file bewteen two devices
+
+        Args:
+            d1 (int): device 1 id
+            d2 (int): device 2 id
+            datasize (float): size of the transmitted file (MB)
+        """
+        speed, _, _ = self.get_link_states_between_devices_by_id(d1, d2)
+        ans = datasize / speed * 1000 # ms
         return ans
     
-    def cal_transmit_delay_between_devices(self, device1: Device, device2: Device, filesize):
-        return self.cal_transmit_delay_between_devices_by_id(device1.id, device2.id, filesize)
+    def cal_transmit_delay_between_devices(self, device1: Device, device2: Device, datasize):
+        return self.cal_transmit_delay_between_devices_by_id(device1.id, device2.id, datasize)
     
     def check_areas(self):
         device_num = 0

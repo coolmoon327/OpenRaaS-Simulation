@@ -9,7 +9,7 @@ class Task(object):
         self.cpu = cpu
         self.mem = mem
         self.user_id = user_id
-        self.type = type
+        self.type = type    # 0 1 2 - process storage desktop
         self.span = span
         
         global task_num
@@ -30,8 +30,25 @@ class Task(object):
         # TODO:  need checking & modifying
         return 0
     
+    def set_QoS_weight(self, start_delay, service_latency, speed, ):
+        '''
+        QoS[0]: start-up delay (negative, per ms)
+                influenced by the C-D link bandwidth (transition time)
+        QoS[1]: service latency (negative, per ms)
+                influenced by the Compute-Client link delay
+        QoS[2]: upload & download speed (positive, per MBps)
+                influenced by C-F the link bandwidth, and storage media (C or F depends on the task type)
+                Note: assume we only know the interface states of devices instead of P2P link states
+        QoS[3]: Jilter (negative, per jilter)
+                influenced by the link between C-F, nobody knows the intermediate links' details
+        QoS[3]: serving time (positive, per slot)
+        QoS[4]: data size (positive, per MB)
+        QoS[5]: computation occupation (positive, per GF)
+        '''
+        pass
+    
     def reset(self):
-        self.app = ApplicationList.get_arbitrary_data()(self.type)
+        self.app = ApplicationList.get_arbitrary_data(self.type)
         self.providers = [-1, -1, []]
         self.life_time = self.span  # the rest time slot it can survive on the cloud
     
@@ -71,13 +88,13 @@ class StorageTask(Task):
         different from others, its memory size will affect the filestore worker instead of the compute worker
         '''
         span = max(10 + 2 * np.random.randn(1)[0], 1.)        # 4 ~ 16 time slots (2h ~ 8h) existing on the cloud drive
-        super().__init__(1, 0., 0., span)
+        super().__init__(1, 0., 0., user_id, span)
         
         file_num = int(4 + np.random.randn(1)[0])            # 1 ~ 7 files
         self.storage_size = 0
         for i in range(file_num):
             self.storage_size += max(50 + 15 * np.random.randn(1)[0], 0.)       # 5 ~ 95 MB per file
-        
+
 
 class DesktopTask(Task):
     def __init__(self, user_id=-1):
@@ -91,7 +108,6 @@ class DesktopTask(Task):
         self.bw = max(100 + 30 * np.random.randn(1)[0], 0.)/8       # (10 ~ 190)/8
     
     def bandwidth(self, type):
-        # TODO: we should design a way to calculate delays
         # bandwidth here only used to indicate the occupation of this slot
         if type == 0:
             return self.bw + 1  # add the downlink bandwidth from metaOS

@@ -53,15 +53,25 @@ class ContainerLayer(Data):
 
 
 class Application(Data):
-    def __init__(self, id, size):
-        '''Application files stored on filestore worker nodes'''
+    def __init__(self, id, size, type):
+        '''Application files stored on filestore worker nodes
+        type: 10-process, 11-storage, 12-desktop
+        '''
+        if type<10:
+            type += 10
+        if not (10<=type<13):
+            raise ValueError(f"Input type {type} is out of range!")
         super.__init__(id, size)
-        self.type = 10
+        self.type = type
         self.env_layers: list[ContainerLayer] = []
     
     def print_type(self):
-        # TODO: enrich application types
-        return "app"
+        if self.type == 10:
+            return "processing app"
+        elif self.type == 11:
+            return "storage app"
+        elif self.type == 12:
+            return "desktop app"
 
 
 class LayerList(object):
@@ -173,7 +183,7 @@ class ApplicationList(object):
         index = 0
         # processing
         for _ in range(30):
-            app = Application(index, 500.)
+            app = Application(index, 500., 10)
             osl = LayerList.get_list(0)[np.random.randint(0,3)]
             dl = LayerList.get_list(1)[np.random.randint(1,5)]
             ll = LayerList.get_list(2)[np.random.randint(4,8)]
@@ -181,7 +191,7 @@ class ApplicationList(object):
             cls.process_apps.append(app)
             index += 1
         # storage
-        app = Application(index, 0.)
+        app = Application(index, 0., 11)
         osl = LayerList.get_list(0)[0]
         dl = LayerList.get_list(1)[0]
         ll = LayerList.get_list(2)[0]
@@ -192,7 +202,7 @@ class ApplicationList(object):
         # desktop
         for _ in range(20):
             size = max(5000 + 1000 * np.random.randn(1)[0], 1.)     # 2000 ~ 8000 MB
-            app = Application(index, size)
+            app = Application(index, size, 12)
             osl = LayerList.get_list(0)[1]
             dl = LayerList.get_list(1)[1]
             ll = LayerList.get_list(2)[np.random.randint(1,4)]

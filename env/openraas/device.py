@@ -1,4 +1,3 @@
-from timeit import default_timer
 import numpy as np
 from .task import *
 
@@ -13,6 +12,8 @@ class Device(object):
         self.timers = []    # timers of stored container layers
         self.default_timer = 5  # servers' timer is -1 so that they won't release layers
         self.apps = []      # IDs of stored app data
+        
+        self.req_tasks = [] # only used when it is a client
         
         self.cal_tasks: list[ProcessTask] = []         # serve as a compute worker
         self.metaos_tasks: list[StorageTask] = []      # serve as a filestore worker
@@ -48,7 +49,9 @@ class Device(object):
         #         # release expired tasks
         #         pass
         #         # billing
-        
+    
+    def max_bandwidth(self):
+        return self.capacity[2]   
     
     def external_cpu_occupation(self):
         cpu = 0.
@@ -131,8 +134,10 @@ class Device(object):
     def check_task_availability(self, microservice_type, task):
         '''check whether the task can be executed in this device with microservice_type'''
         ans = True
+        if task.bandwidth(microservice_type) > self.bw:
+            return False
         if microservice_type == 0:
-            if self.isMobile == True or self.isOpen == False or task.cpu > self.cpu or task.mem > self.mem or task.bandwidth(0) > self.bw:
+            if self.isMobile == True or self.isOpen == False or task.cpu > self.cpu or task.mem > self.mem:
                 ans = False
             else:
                 # remain env space check
@@ -143,8 +148,6 @@ class Device(object):
                 if required_env_space > self.mem:
                     ans = False
         elif self.isMobile == True or microservice_type == 1:
-            if task.bandwidth(1) > self.bw:
-                ans = False
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
                 if task.storage_size > self.mem:
@@ -154,17 +157,14 @@ class Device(object):
                 if task.app.id not in self.apps:
                     ans = False
         elif microservice_type == 2:
-            if task.bandwidth(2) > self.bw:
+            # env layer check
+            any_layer_existing = False
+            for layer in task.app.env_layers:
+                if layer.id in self.layers:
+                    any_layer_existing = True
+                    break
+            if not any_layer_existing:
                 ans = False
-            else:
-                # env layer check
-                any_layer_existing = False
-                for layer in task.app.env_layers:
-                    if layer.id in self.layers:
-                        any_layer_existing = True
-                        break
-                if not any_layer_existing:
-                    ans = False
         else:
             raise ValueError(f"Input microservice_type {microservice_type} is out of range!")
         return ans
@@ -183,9 +183,9 @@ class Device(object):
         task.set_provider(microservice_type, self.id)   # TODO: check whether this setting takes effect in the global
         
         # resource occupation
+        # self.bw -= task.bandwidth(microservice_type) # now we occupy bandwidth in topology
         if microservice_type == 0:
             self.cpu -= task.cpu
-            self.bw -= task.bandwidth(0)
             if task.type != 1:
                 # in a storage task, compute worker only forward user data
                 self.mem -= task.mem
@@ -197,13 +197,11 @@ class Device(object):
                     self.refresh_layer_timers(layer=layer)
         
         elif microservice_type == 1:
-            self.bw -= task.bandwidth(1)
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
                 self.mem -= task.storage_size
         
         elif microservice_type == 2:
-            self.bw -= task.bandwidth(2)
             # push layers
             for layer in task.app.env_layers:
                 if layer.id in self.layers:
@@ -222,17 +220,16 @@ class Device(object):
         except:
             raise ValueError(f"No such task with id {task.id} in microservice_type {microservice_type}")
         # release resource occuptaion
+        # self.bw += task.bandwidth(microservice_type)  # now we release bandwidth in topology
         if microservice_type == 0:
             self.cpu += task.cpu
             self.mem += task.mem
-            self.bw += task.bandwidth(0)
         elif microservice_type == 1:
-            self.bw += task.bandwidth(1)
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
                 self.mem += task.storage_size
         elif microservice_type == 2:
-            self.bw += task.bandwidth(2)
+            pass
     
     def release_task_by_taskid(self, microservice_type, task_id):
         tasks = self.get_tasks_set(microservice_type)
@@ -278,6 +275,7 @@ class Device(object):
         mem = self.mem
         bw = self.bw
         C = self.capacity
+        
         # 1. check legality
         if not (0.<=cpu<=C[0] and 0<=mem<=C[1] and 0<=bw<=C[2]):
             return -1
@@ -292,6 +290,10 @@ class Device(object):
             bw += task.bandwidth(1)
         for task in self.image_tasks:
             bw += task.bandwidth(2)
+        # as a client, it transfers data to the compute node
+        for task in self.req_tasks:
+            bw += task.bandwidth(0)
+            
         # 2.2 stored applications & images
         List = ApplicationList
         ids = self.apps
@@ -303,7 +305,6 @@ class Device(object):
         
         if not(cpu == C[0] and mem == C[1] and bw == C[2]):
             return -2
-        
         return 0
     
     
@@ -324,7 +325,6 @@ class Server(Device):
 class Client(Device):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
-        self.req_tasks = []
         
     # def set_requirement_type(self, type):
     #     '''set requirement type
