@@ -81,7 +81,7 @@ class Topology(object):
     def add_device(self, device: Device, area_id=-1):
         if area_id == -1:
             area_id = np.random.randint(0, self.area_num)
-        type = 0 if device.type() == 'server' else 1
+        type = 0 if device.print_type() == 'server' else 1
         self.areas[area_id].add_device(type, device.id, device.max_bandwidth())
         self.device_to_area[device.id] = area_id
     

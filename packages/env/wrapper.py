@@ -5,7 +5,9 @@ class EnvWrapper:
         self.env = Environment(config)
 
     def reset(self):
-        state = self.env.reset()
+        self.env.reset()
+        self.env.next()
+        state = self.env.get_state()
         return state
 
     def get_random_action(self):
@@ -13,7 +15,19 @@ class EnvWrapper:
         return action
 
     def step(self, action):
-        next_state, reward, terminal, _ = self.env.step(action.ravel())
+        """step into next state with the input action executed
+
+        Args:
+            action (np.array)
+
+        Returns:
+            state (np.array)
+        """
+        # next_state, reward, terminal, _ = self.env.step(action.ravel())
+        self.env.step(action)
+        next_state = self.env.get_state()
+        reward = 0
+        terminal = 0
         return next_state, reward, terminal
 
     def set_random_seed(self, seed):

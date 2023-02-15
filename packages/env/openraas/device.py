@@ -38,7 +38,7 @@ class Device(object):
         
         # 2. update work load
         # be care the self.mem is prepared for OpenRaaS, and cannot be occupied by internal processes
-        cpu_offset = self.capacity * (0.03 +  0.03 * np.random.randn(1)[0])   # -0.06 ~ 0.12 of cpu capacity, more probability to be idle
+        cpu_offset = self.capacity[0] * (0.03 +  0.03 * np.random.randn(1)[0])   # -0.06 ~ 0.12 of cpu capacity, more probability to be idle
         self.cpu = np.clip(self.cpu+cpu_offset, 0., self.capacity[0]-self.external_cpu_occupation())
         
         # Warning: shouldn't update task here, because one task instance may be handled by three workers by weak copy. We should update it in the environment.py
@@ -111,7 +111,7 @@ class Device(object):
                 self.timers[i] = self.default_timer
     
     def push_layer(self, layer):
-        if layer not in self.layers:
+        if layer.id not in self.layers:
             raise ValueError(f"The layer {layer.id} does not exist in this device {self.id}.")
         self.refresh_layer_timers(layer=layer)
         # TODO: occupation calculation
@@ -258,10 +258,11 @@ class Device(object):
         self.mem -= data.size
         if data.type == -1:
             raise ValueError(f"Data with id {data.id} didn't set type value!")
-        elif data.type == 10:
+        elif 10 <= data.type < 13:
             self.apps.append(data.id)
         else:
             self.layers.append(data.id)
+            self.timers.append(self.default_timer)
         data.add_host(self.id)
     
     def check_error(self):
@@ -318,7 +319,7 @@ class Server(Device):
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
         self.default_timer = -1 # do not release any layer
     
-    def type(self):
+    def print_type(self):
         return 'server'
 
 

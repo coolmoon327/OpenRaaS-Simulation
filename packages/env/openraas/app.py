@@ -7,7 +7,9 @@ import numpy as np
 2: library layer
 3: execution layer
 4: compatible layer
-10: app
+10: processing app
+11: storage app
+12: desktop app
 '''
 
 class Data(object):
@@ -19,9 +21,13 @@ class Data(object):
         self.type = -1
     
     def add_host(self, host_id: int):
+        if host_id in self.hosts:
+            raise ValueError(f"Host {host_id} is already existing!")
         self.hosts.append(host_id)
     
     def remove_host(self, host_id: int):
+        if host_id not in self.hosts:
+            raise ValueError(f"Host {host_id} isn't existing!")
         self.hosts.remove(host_id)
     
     def print_type(self):
@@ -34,7 +40,7 @@ class ContainerLayer(Data):
         size: MB
         type: 0-os, 1-driver, 2-library, 3-execution, 4-compatible
         '''
-        super.__init__(id, size)
+        super().__init__(id, size)
         if not (0<=type<5):
             raise ValueError(f"Input type {type} is out of range!")
         self.type = type
@@ -61,7 +67,7 @@ class Application(Data):
             type += 10
         if not (10<=type<13):
             raise ValueError(f"Input type {type} is out of range!")
-        super.__init__(id, size)
+        super().__init__(id, size)
         self.type = type
         self.env_layers: list[ContainerLayer] = []
     
@@ -116,7 +122,7 @@ class LayerList(object):
         cls.compatible_layers.append(ContainerLayer(index, 500, 4)) # compatible_layers[0] for desktop
         index += 1
         
-        cls.layers = cls.os_layers + cls.driver_layers + cls.exec_layers + cls.compatible_layers
+        cls.layers = cls.os_layers + cls.driver_layers + cls.lib_layers + cls.exec_layers + cls.compatible_layers
         if cls.layers.__len__() != index:
             raise ValueError(f"The layer list length {cls.layers.__len__()} is not equal to the total sublayers number {index}")
     
@@ -245,7 +251,7 @@ class ApplicationList(object):
             applist = cls.process_apps
         elif app_type == 1:
             applist = cls.storage_apps
-        elif applist == 2:
+        elif app_type == 2:
             applist = cls.desktop_apps
         else:
             raise ValueError(f"Input app_type {app_type} is out of range!")
