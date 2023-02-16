@@ -1,5 +1,6 @@
 import numpy as np
 from .task import *
+from .app import *
 
 class Device(object):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
@@ -17,7 +18,7 @@ class Device(object):
         
         self.cal_tasks: list[ProcessTask] = []         # serve as a compute worker
         self.metaos_tasks: list[StorageTask] = []      # serve as a filestore worker
-        self.image_tasks: list[DesktopTask] = []       # serve as a depository worker
+        self.image_tasks: list[DesktopTask] = []       # serve as a depository worker        
         self.reset()
     
     def reset(self):
@@ -27,6 +28,8 @@ class Device(object):
         self.bw = self.capacity[2]              # bandwidth: MegaBytes
                                                 # the remaining bandwidth only be considered in a desktop application scenario
                                                 # other services only occupy network links for several seconds, which should be taken as the startup delay
+        self.preoccupied_resource = [0., 0., 0.]
+        
         self.cal_tasks.clear()
         self.metaos_tasks.clear()
         self.image_tasks.clear()
@@ -35,11 +38,21 @@ class Device(object):
         '''step into next time slot'''
         # 1. clear instant cache of the last slot
         # don't clear tasks set here, because destop services may occupy several slots
+        self.preoccupied_resource = [0., 0., 0.]
         
         # 2. update work load
         # be care the self.mem is prepared for OpenRaaS, and cannot be occupied by internal processes
         cpu_offset = self.capacity[0] * (0.03 +  0.03 * np.random.randn(1)[0])   # -0.06 ~ 0.12 of cpu capacity, more probability to be idle
         self.cpu = np.clip(self.cpu+cpu_offset, 0., self.capacity[0]-self.external_cpu_occupation())
+        
+        remove_list = []
+        for i in range(self.timers.__len__()):
+            self.timers[i] -= 1
+            if self.timers[i] == 0:
+                layer = LayerList.get_data_by_id(self.layers[i])
+                remove_list.append(layer)
+        for layer in remove_list:
+            self.remove_layer(layer)
         
         # Warning: shouldn't update task here, because one task instance may be handled by three workers by weak copy. We should update it in the environment.py
         # # 3. update task state
@@ -75,11 +88,11 @@ class Device(object):
         self.mem -= layer.size
     
     def remove_layer(self, layer):
-        if layer not in self.layers:
+        if layer.id not in self.layers:
             raise ValueError(f"The layer {layer.id} does not exist in this device {self.id}.")
         i = self.layers.index(layer.id)
-        self.layers.remove(self.layers[i])
-        self.timers.remove(self.timers[i])
+        del self.layers[i]
+        del self.timers[i]
         layer.remove_host(self.id)
         # resource changes
         self.mem += layer.size
@@ -99,21 +112,22 @@ class Device(object):
                 ml.append(layer.id)
         return ml
     
-    def refresh_layer_timers(self, layer=None, task=None):
-        if task:
-            for l in task.app.env_layers:
-                if l.id in self.layers:
-                    i = self.layers.index(l.id)
-                    self.timers[i] = self.default_timer
-        if layer:
-            if layer.id in self.layers:
-                i = self.layers.index(layer.id)
-                self.timers[i] = self.default_timer
+    # def refresh_layer_timers(self, layer=None, task=None):
+    #     if task:
+    #         for l in task.app.env_layers:
+    #             if l.id in self.layers:
+    #                 i = self.layers.index(l.id)
+    #                 self.timers[i] = self.default_timer
+    #     if layer:
+    #         # if layer.id in self.layers:
+    #         i = self.layers.index(layer.id)
+    #         self.timers[i] = self.default_timer
     
     def push_layer(self, layer):
         if layer.id not in self.layers:
             raise ValueError(f"The layer {layer.id} does not exist in this device {self.id}.")
-        self.refresh_layer_timers(layer=layer)
+        # self.refresh_layer_timers(layer=layer)
+        self.timers[self.layers.index(layer.id)] = self.default_timer
         # TODO: occupation calculation
         # We use all depositories working in the P2P file-sharing mode, so everyone only spends a piece of bandwidth
         # The details should be implemented in the environment.py
@@ -134,10 +148,10 @@ class Device(object):
     def check_task_availability(self, microservice_type, task):
         '''check whether the task can be executed in this device with microservice_type'''
         ans = True
-        if task.bandwidth(microservice_type) > self.bw:
+        if task.bandwidth(microservice_type) > self.bw  - self.preoccupied_resource[2]:
             return False
         if microservice_type == 0:
-            if self.isMobile == True or self.isOpen == False or task.cpu > self.cpu or task.mem > self.mem:
+            if self.isMobile == True or self.isOpen == False or task.cpu > self.cpu  - self.preoccupied_resource[0] or task.mem > self.mem  - self.preoccupied_resource[1]:
                 ans = False
             else:
                 # remain env space check
@@ -145,12 +159,12 @@ class Device(object):
                 for layer in task.app.env_layers:
                     if layer.id not in self.layers:
                         required_env_space += layer.size
-                if required_env_space > self.mem:
+                if required_env_space > self.mem - self.preoccupied_resource[1]:
                     ans = False
-        elif self.isMobile == True or microservice_type == 1:
+        elif microservice_type == 1:
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
-                if task.storage_size > self.mem:
+                if self.isMobile == True or task.storage_size > self.mem  - self.preoccupied_resource[1]:
                     ans = False
             # app check
             else:
@@ -180,7 +194,6 @@ class Device(object):
         if not self.check_task_availability(microservice_type, task):
             raise ValueError(f"The task with id {task.id} cannot be handled by device {self.id} in microservice_type {microservice_type}")
         tasks.append(task)
-        task.set_provider(microservice_type, self.id)   # TODO: check whether this setting takes effect in the global
         
         # resource occupation
         # self.bw -= task.bandwidth(microservice_type) # now we occupy bandwidth in topology
@@ -194,7 +207,8 @@ class Device(object):
                 if layer.id not in self.layers:
                     self.fetch_layer(layer)
                 else:
-                    self.refresh_layer_timers(layer=layer)
+                    # self.refresh_layer_timers(layer=layer)
+                    self.timers[self.layers.index(layer.id)] = self.default_timer
         
         elif microservice_type == 1:
             if task.type == 1:
@@ -220,7 +234,7 @@ class Device(object):
         except:
             raise ValueError(f"No such task with id {task.id} in microservice_type {microservice_type}")
         # release resource occuptaion
-        # self.bw += task.bandwidth(microservice_type)  # now we release bandwidth in topology
+        # self.bw += task.bandwidth(microservice_type)  # TODO: now we release bandwidth in topology
         if microservice_type == 0:
             self.cpu += task.cpu
             self.mem += task.mem
@@ -359,6 +373,7 @@ class Client(Device):
             task = StorageTask(self.id)
         elif task_type == 2:
             task = DesktopTask(self.id)
+        self.preoccupied_resource[2] += task.bandwidth(0)
         self.req_tasks.append(task)
     
     def reset(self):

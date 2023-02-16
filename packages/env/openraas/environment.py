@@ -90,6 +90,7 @@ class Environment(object):
                             # all M servers cannot store it, set error flag
                             raise ValueError(f"Data with id {data.id} cannot be stored in any a server!")
                     self.devices[index].store_data(data)    # host_id is appended in this method. if not, check it
+            List = ApplicationList
             
         # 2. every device has a chance to store some arbitrary data
         for device in self.devices:
@@ -156,7 +157,7 @@ class Environment(object):
                 for d in depositories:
                     depository = self.devices[d]
                     depository.release_task(2, task)
-                    self.topology.release_between_devices(compute, depository, task.bandwidth(3))
+                    self.topology.release_between_devices(compute, depository, task.bandwidth(2))
                 
                 # TODO: settle a bill
                 pass
@@ -175,31 +176,47 @@ class Environment(object):
             state (np.array)
         """
         state = []
-        minn = 1e6
-        target_c = -1
         for task in self.new_tasks:
-            # TODO: use a temp list to store bellow chosen workers, so that action & state need not containing the device ID
             # 4.1 find the closest devices as compute candidates
-            edge_area = self.topology.areas[self.topology.device_to_area[task.user_id]]
-            for device_id in edge_area.devices:
-                device = self.devices[device_id]
-                if device_id == task.user_id or not device.check_task_availability(0, task):
+            # edge_area = self.topology.areas[self.topology.device_to_area[task.user_id]]
+            # for device_id in edge_area.devices:
+                # device = self.devices[device_id]
+            minn = 1e6
+            target_c = -1
+            for device in self.devices:
+                if device.id == task.user_id or (not device.check_task_availability(0, task)):
                     continue
                 _, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
                 if l < minn:
                     minn = l
                     target_c = device.id
+            if target_c == -1:
+                # TODO: dropped task flag
+                state.append([-1. for _ in range(self.task_info_num+2+1+self.candidates_num*self.filestore_info_num)])
+                continue
+            
             task.set_provider(0, target_c)
+            self.devices[target_c].preoccupied_resource[0] += task.cpu
+            self.devices[target_c].preoccupied_resource[1] += task.mem
+            self.devices[target_c].preoccupied_resource[2] += task.bandwidth(0) + task.bandwidth(1)
+            self.devices[task.user_id].preoccupied_resource[2] += task.bandwidth(0)
             
             # 4.2 find devices with the target application as filestore candidates (return 10 candidates)
             # 4.2.1 finds all available devices
-            avail_fs =  task.app.hosts
+            avail_fs = []
+            for fs_id in task.app.hosts:
+                if self.devices[fs_id].check_task_availability(1, task):
+                    avail_fs.append(fs_id)
             # 4.2.2 calculate their priorities
             # TODO: temporally use the interface latency to sort, modify it in need
             dict_p = {}
             for fs_id in avail_fs:
                 line = self.topology.get_device_interface_link_by_id(fs_id)
                 dict_p[fs_id] = line.bandwidth
+                # every device is pre-allocated
+                self.devices[fs_id].preoccupied_resource[2] += task.bandwidth(1)
+                if task.type == 1:
+                    self.devices[fs_id].preoccupied_resource[1] += task.storage_size
             
             # 4.2.3 sort by priority and take the first 10 devices
             dict_p = dict(sorted(dict_p.items(), key=lambda item: -item[1]))
@@ -219,10 +236,14 @@ class Environment(object):
                     depositories = []
                     break
                 depositories += layer.hosts
-                # TODO: how about bandwidth?
             for d_id in depositories:
-                task.set_provider(2, d_id)
-        
+                if self.devices[d_id].check_task_availability(2, task):
+                    task.set_provider(2, d_id)
+                    # every device is pre-allocated
+                    self.devices[layer_id].preoccupied_resource[1] += task.mem
+                    self.devices[layer_id].preoccupied_resource[2] += task.bandwidth(2)        
+            avail_d = task.get_provider(2)
+            
             # 4.4 arrange the observation
             task_info = [task.cpu, task.mem, task.span]
             # TODO: set the worker type
@@ -254,9 +275,14 @@ class Environment(object):
         
         # 1. execute service composition
         for i in range(len(action)):
+            # print(i)
             task = self.new_tasks[i]
             
-            if action[i] >= self.fs_candidates[i].__len__():
+            if not -1 <= action[i] < self.fs_candidates[i].__len__():
+                raise ValueError("Error action {action[i]} is larger than the candidates number {self.fs_candidates[i].__len__()}")
+            
+            if action[i] == -1:
+                # this task cannot be composed
                 continue
             
             task.set_provider(1, self.fs_candidates[i][action[i]])
@@ -271,6 +297,8 @@ class Environment(object):
             depositories = task.get_provider(2)
             
             # resource changes
+            compute.preoccupied_resource = [0., 0., 0.]
+            filestore.preoccupied_resource = [0., 0., 0.]
             compute.allocate_tasks(0, task) # TODO: we should pre-allocate resource for C and D! and release it no matter whether we execute it or not
             filestore.allocate_tasks(1, task)
             self.topology.transmit_between_devices(client, compute, task.bandwidth(0))
@@ -278,8 +306,9 @@ class Environment(object):
             
             for d in depositories:
                 depository = self.devices[d]
-                depository.allocate_tasks(2, task) 
-                self.topology.transmit_between_devices(compute, depository, task.bandwidth(3))
+                depository.preoccupied_resource = [0., 0., 0.]
+                depository.allocate_tasks(2, task)
+                self.topology.transmit_between_devices(compute, depository, task.bandwidth(2))
             
             # add newly executed ones in scheduled_tasks
             self.scheduled_tasks.append(task)

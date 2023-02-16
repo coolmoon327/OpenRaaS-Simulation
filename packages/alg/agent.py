@@ -64,6 +64,9 @@ class SimulationAgent(object):
                 # 2. gain action
                 actions = []
                 for i in range(num):
+                    if compute_info[i][0] == -1.:
+                        actions.append(-1)
+                        continue
                     bws = [top_cand_info[i][j][0] for j in range(candidates_num)]
                     ls = [top_cand_info[i][j][1] for j in range(candidates_num)]
                     js = [top_cand_info[i][j][2] for j in range(candidates_num)]
@@ -73,4 +76,6 @@ class SimulationAgent(object):
                 actions = np.array(actions)
                 
                 # 3. go into next step
-                state = env.step(actions)
+                state, _, __ = env.step(actions)
+                
+                print(f"E{episode}S{step}")

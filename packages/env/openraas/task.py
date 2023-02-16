@@ -87,7 +87,7 @@ class StorageTask(Task):
         this task should give its storing time span
         different from others, its memory size will affect the filestore worker instead of the compute worker
         '''
-        span = max(10 + 2 * np.random.randn(1)[0], 1.)        # 4 ~ 16 time slots (2h ~ 8h) existing on the cloud drive
+        span = round(max(10 + 2 * np.random.randn(1)[0], 1.))        # 4 ~ 16 time slots (2h ~ 8h) existing on the cloud drive
         super().__init__(1, 0., 0., user_id, span)
         
         file_num = int(4 + np.random.randn(1)[0])            # 1 ~ 7 files
@@ -102,7 +102,7 @@ class DesktopTask(Task):
         this task should give its lasting time span
         '''
         cpu = max(5 + 1.5 * np.random.randn(1)[0], 0.)       # 0.5 ~ 9.5
-        span = max(3 + 1 * np.random.randn(1)[0], 1.)        # 1 ~ 6 time slots (30m ~ 3h) existing on the cloud drive
+        span = round(max(3 + 1 * np.random.randn(1)[0], 1.))        # 1 ~ 6 time slots (30m ~ 3h) existing on the cloud drive
         super().__init__(2, cpu, 0., user_id, span)
         
         self.bw = max(100 + 30 * np.random.randn(1)[0], 0.)/8       # (10 ~ 190)/8
@@ -110,11 +110,11 @@ class DesktopTask(Task):
     def bandwidth(self, type):
         # bandwidth here only used to indicate the occupation of this slot
         if type == 0:
-            return self.bw + 1  # add the downlink bandwidth from metaOS
+            return self.bw
         elif type == 1:
             # fixed 1 MBps
             return 1
-        else:
+        elif type == 2:
             # image fetching just like file downloading in other scenarios that cannot occupy the entire time slot 
-            return 0
+            return 0 
         
