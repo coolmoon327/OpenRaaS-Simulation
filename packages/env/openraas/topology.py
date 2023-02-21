@@ -82,7 +82,7 @@ class Topology(object):
         if area_id == -1:
             area_id = np.random.randint(0, self.area_num)
         type = 0 if device.print_type() == 'server' else 1
-        self.areas[area_id].add_device(type, device.id, device.max_bandwidth())
+        self.areas[area_id].add_device(type, device.id, device.bw)
         self.device_to_area[device.id] = area_id
     
     def transmit_between_devices(self, device1: Device, device2: Device, datasize):
@@ -99,10 +99,16 @@ class Topology(object):
             jilter: total sampledd jilters
         
         """
+        if datasize == 0 or device1 == device2:
+            return
+        
         a1 = self.get_area_by_device_id(device1.id)
         a2 = self.get_area_by_device_id(device2.id)
         i1 = self.get_device_interface_link_by_id(device1.id)
         i2 = self.get_device_interface_link_by_id(device2.id)
+        
+        if i1.bandwidth != device1.bw or i2.bandwidth != device2.bw:
+            raise ValueError(f"The link bandwidth is not equal to the interface's.")
         
         i1.bandwidth -= datasize
         i2.bandwidth -= datasize
@@ -112,7 +118,10 @@ class Topology(object):
         if a1 != a2:
             a1.backbone.bandwidth -= datasize
             a2.backbone.bandwidth -= datasize
-    
+
+        if i1.bandwidth < 0 or i2.bandwidth < 0 or a1.backbone.bandwidth < 0 or a2.backbone.bandwidth < 0:
+            raise ValueError(f"Negative bandwidth.")
+        
     def release_between_devices(self, device1: Device, device2: Device, datasize):
         return self.transmit_between_devices(device1, device2, -datasize)
     

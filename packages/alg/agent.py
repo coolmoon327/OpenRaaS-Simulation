@@ -76,6 +76,6 @@ class SimulationAgent(object):
                 actions = np.array(actions)
                 
                 # 3. go into next step
-                state, _, __ = env.step(actions)
+                state, reward, _ = env.step(actions)
                 
-                print(f"E{episode}S{step}")
+                print(f"E{episode}S{step}: reward={np.mean(reward)}")

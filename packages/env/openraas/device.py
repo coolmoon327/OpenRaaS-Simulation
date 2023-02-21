@@ -1,6 +1,7 @@
 import numpy as np
 from .task import *
 from .app import *
+import math
 
 class Device(object):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
@@ -14,12 +15,17 @@ class Device(object):
         self.default_timer = 5  # servers' timer is -1 so that they won't release layers
         self.apps = []      # IDs of stored app data
         
-        self.req_tasks = [] # only used when it is a client
+        self.req_tasks: list[ProcessTask] = [] # only used when it is a client
+        self.new_tasks: list[ProcessTask] = []
         
         self.cal_tasks: list[ProcessTask] = []         # serve as a compute worker
         self.metaos_tasks: list[StorageTask] = []      # serve as a filestore worker
         self.image_tasks: list[DesktopTask] = []       # serve as a depository worker        
         self.reset()
+        
+        self.worker_type = 0
+        self.p_coef = [(np.random.randint(50, 100) / 100.), (np.random.randint(50, 100) / 100. / 1000.), (np.random.randint(50, 100) / 100.) ]  # p_coef = [0.5, 1]
+        # TODO: design how to charge
     
     def reset(self):
         # not reset layers & apps
@@ -30,6 +36,8 @@ class Device(object):
                                                 # other services only occupy network links for several seconds, which should be taken as the startup delay
         self.preoccupied_resource = [0., 0., 0.]
         
+        self.inner_cpu = 0.
+        
         self.cal_tasks.clear()
         self.metaos_tasks.clear()
         self.image_tasks.clear()
@@ -38,12 +46,13 @@ class Device(object):
         '''step into next time slot'''
         # 1. clear instant cache of the last slot
         # don't clear tasks set here, because destop services may occupy several slots
-        self.preoccupied_resource = [0., 0., 0.]
         
         # 2. update work load
         # be care the self.mem is prepared for OpenRaaS, and cannot be occupied by internal processes
         cpu_offset = self.capacity[0] * (0.03 +  0.03 * np.random.randn(1)[0])   # -0.06 ~ 0.12 of cpu capacity, more probability to be idle
-        self.cpu = np.clip(self.cpu+cpu_offset, 0., self.capacity[0]-self.external_cpu_occupation())
+        new_cpu = np.clip(self.cpu+cpu_offset, 0., self.capacity[0]-self.external_cpu_occupation())
+        self.inner_cpu += self.cpu - new_cpu
+        self.cpu = new_cpu
         
         remove_list = []
         for i in range(self.timers.__len__()):
@@ -62,9 +71,6 @@ class Device(object):
         #         # release expired tasks
         #         pass
         #         # billing
-    
-    def max_bandwidth(self):
-        return self.capacity[2]   
     
     def external_cpu_occupation(self):
         cpu = 0.
@@ -123,11 +129,14 @@ class Device(object):
     #         i = self.layers.index(layer.id)
     #         self.timers[i] = self.default_timer
     
-    def push_layer(self, layer):
-        if layer.id not in self.layers:
-            raise ValueError(f"The layer {layer.id} does not exist in this device {self.id}.")
+    def push_layer(self, layer=None, layer_id=-1):
+        if layer_id == -1:
+            layer_id = layer.id
+        if layer_id not in self.layers:
+            raise ValueError(f"The layer {layer_id} does not exist in this device {self.id}.")
         # self.refresh_layer_timers(layer=layer)
-        self.timers[self.layers.index(layer.id)] = self.default_timer
+        self.timers[self.layers.index(layer_id)] = self.default_timer
+        
         # TODO: occupation calculation
         # We use all depositories working in the P2P file-sharing mode, so everyone only spends a piece of bandwidth
         # The details should be implemented in the environment.py
@@ -145,13 +154,25 @@ class Device(object):
         else:
             raise ValueError(f"Input microservice_type {microservice_type} is out of range!")
     
-    def check_task_availability(self, microservice_type, task):
+    def check_task_availability(self, microservice_type, task, ignore_preoccupation=False):
         '''check whether the task can be executed in this device with microservice_type'''
+        if not ignore_preoccupation:
+            pbw = self.preoccupied_resource[2]
+            pcpu = self.preoccupied_resource[0]
+            pmem = self.preoccupied_resource[1]
+        else:
+            pbw, pcpu, pmem = 0., 0., 0.
+        
         ans = True
-        if task.bandwidth(microservice_type) > self.bw  - self.preoccupied_resource[2]:
-            return False
+        
+        BW = task.bandwidth(microservice_type)
         if microservice_type == 0:
-            if self.isMobile == True or self.isOpen == False or task.cpu > self.cpu  - self.preoccupied_resource[0] or task.mem > self.mem  - self.preoccupied_resource[1]:
+            BW += task.bandwidth(1)
+        if BW > self.bw  - pbw:
+            return False
+        
+        if microservice_type == 0:
+            if self.isMobile == True or self.isOpen == False or task.cpu > self.cpu  - pcpu or task.mem > self.mem  - pmem:
                 ans = False
             else:
                 # remain env space check
@@ -159,12 +180,12 @@ class Device(object):
                 for layer in task.app.env_layers:
                     if layer.id not in self.layers:
                         required_env_space += layer.size
-                if required_env_space > self.mem - self.preoccupied_resource[1]:
+                if required_env_space > self.mem - pmem:
                     ans = False
         elif microservice_type == 1:
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
-                if self.isMobile == True or task.storage_size > self.mem  - self.preoccupied_resource[1]:
+                if self.isMobile == True or task.mem > self.mem  - pmem:
                     ans = False
             # app check
             else:
@@ -191,12 +212,11 @@ class Device(object):
         2: the depository worker, and add the task into image_tasks
         '''
         tasks = self.get_tasks_set(microservice_type)
-        if not self.check_task_availability(microservice_type, task):
+        if not self.check_task_availability(microservice_type, task, ignore_preoccupation=True):
             raise ValueError(f"The task with id {task.id} cannot be handled by device {self.id} in microservice_type {microservice_type}")
         tasks.append(task)
         
         # resource occupation
-        # self.bw -= task.bandwidth(microservice_type) # now we occupy bandwidth in topology
         if microservice_type == 0:
             self.cpu -= task.cpu
             if task.type != 1:
@@ -213,13 +233,13 @@ class Device(object):
         elif microservice_type == 1:
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
-                self.mem -= task.storage_size
+                self.mem -= task.mem
         
         elif microservice_type == 2:
             # push layers
-            for layer in task.app.env_layers:
-                if layer.id in self.layers:
-                    self.push_layer(layer=layer)
+            for layer_id in task.missing_layers:
+                if layer_id in self.layers:
+                    self.push_layer(layer_id=layer_id)
     
     def release_task(self, microservice_type, task):
         '''release a target task from list
@@ -234,14 +254,14 @@ class Device(object):
         except:
             raise ValueError(f"No such task with id {task.id} in microservice_type {microservice_type}")
         # release resource occuptaion
-        # self.bw += task.bandwidth(microservice_type)  # TODO: now we release bandwidth in topology
         if microservice_type == 0:
             self.cpu += task.cpu
-            self.mem += task.mem
+            if task.type != 1:
+                self.mem += task.mem
         elif microservice_type == 1:
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
-                self.mem += task.storage_size
+                self.mem += task.mem
         elif microservice_type == 2:
             pass
     
@@ -279,35 +299,66 @@ class Device(object):
             self.timers.append(self.default_timer)
         data.add_host(self.id)
     
+    ## resource usage
+    
+    def idle_resource_occupation_rate(self, resource_type):
+        if resource_type == 0:
+            r = self.cpu
+        if resource_type == 1:
+            r = self.mem
+        if resource_type == 2:
+            r = self.bw
+        return r/self.capacity[resource_type]
+    
+    def unit_price(self, resource_type):
+        """
+        0-cpu, 1-mem, 2-bandwidth
+        """
+        ocr = self.idle_resource_occupation_rate(resource_type)
+        if ocr == 1:
+            return 1e6
+        return self.p_coef[resource_type] / (1 - ocr)
+    
     def check_error(self):
         '''check whether the variables are correct
         return error_id
         0:  No problem
         -1:  Existing illegal data
         -2:  Device resource cannot match the capacity
+        warning: only can check after finishing tasks schedule because of the req_tasks
         '''
-        cpu = self.cpu
+        cpu = self.cpu + self.inner_cpu
         mem = self.mem
         bw = self.bw
         C = self.capacity
         
         # 1. check legality
-        if not (0.<=cpu<=C[0] and 0<=mem<=C[1] and 0<=bw<=C[2]):
+        if not (0.<=round(cpu,6)<=C[0] and 0<=round(mem,6)<=C[1] and 0<=round(bw,6)<=C[2]):
             return -1
         
         # 2. check capacity
         # 2.1 external tasks
         for task in self.cal_tasks:
             cpu += task.cpu
-            mem += task.mem
+            if task.type != 1:
+                mem += task.mem
             bw += task.bandwidth(0)
+            if self.id != task.get_provider(1):
+                bw += task.bandwidth(1)
+            if self.id not in task.get_provider(2):
+                bw += task.bandwidth(2)
         for task in self.metaos_tasks:
-            bw += task.bandwidth(1)
+            if self.id != task.get_provider(0):
+                bw += task.bandwidth(1)
+            if task.type == 1:
+                mem += task.mem
         for task in self.image_tasks:
-            bw += task.bandwidth(2)
+            if self.id != task.get_provider(0):
+                bw += task.bandwidth(2)
         # as a client, it transfers data to the compute node
         for task in self.req_tasks:
-            bw += task.bandwidth(0)
+            if task.is_allocated():
+                bw += task.bandwidth(0)
             
         # 2.2 stored applications & images
         List = ApplicationList
@@ -318,7 +369,7 @@ class Device(object):
             List = LayerList
             ids = self.layers
         
-        if not(cpu == C[0] and mem == C[1] and bw == C[2]):
+        if not(math.isclose(cpu, C[0], rel_tol=1e-2) and math.isclose(mem, C[1], rel_tol=1e-2) and math.isclose(bw, C[2], rel_tol=1e-2)):
             return -2
         return 0
     
@@ -361,9 +412,6 @@ class Client(Device):
     #     elif self.req == 3:
     #         return 'Internet'
     
-    def required_tasks(self):
-        return self.req_tasks
-    
     def generate_task(self, task_type=-1):
         if task_type == -1:
             task_type = np.random.randint(0,3)
@@ -374,7 +422,7 @@ class Client(Device):
         elif task_type == 2:
             task = DesktopTask(self.id)
         self.preoccupied_resource[2] += task.bandwidth(0)
-        self.req_tasks.append(task)
+        self.new_tasks.append(task)
     
     def reset(self):
         super().reset()
@@ -383,16 +431,16 @@ class Client(Device):
     def step(self):
         super().step()
         # generate new tasks
-        self.req_tasks.clear()      # won't keep tasks waiting because the time slot unit is 30 minutes
+        self.new_tasks.clear()
         if np.random.randint(0,10) < 2:     # 20% chance to gain a new requirement
             self.generate_task()
 
 
 class Desktop(Client):
     def __init__(self, id):
-        cpu = max(20 + 3 * np.random.randn(1)[0], 0.)      # 11 ~ 29
-        mem = max(30e3 + 3e3 * np.random.randn(1)[0], 0.)  # 21e3 ~ 39e3
-        bw = max(300 + 70 * np.random.randn(1)[0], 0.)/8   # (90 ~ 510)/8 MBps
+        cpu = round(max(20 + 3 * np.random.randn(1)[0], 1.))      # 11 ~ 29
+        mem = round(max(30e3 + 3e3 * np.random.randn(1)[0], 1.))  # 21e3 ~ 39e3
+        bw = round(max(300 + 70 * np.random.randn(1)[0], 1.))/8   # (90 ~ 510)/8 MBps
         isOpen = np.random.randint(0,10) < 3            # 30% devices are open
         isMobile = False
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
@@ -403,9 +451,9 @@ class Desktop(Client):
 
 class MobileDevice(Client):
     def __init__(self, id):
-        cpu = max(5 + 1 * np.random.randn(1)[0], 0.)       # 2 ~ 8
-        mem = max(10e3 + 2e3 * np.random.randn(1)[0], 0.)  # 4e3 ~ 16e3
-        bw = max(300 + 70 * np.random.randn(1)[0], 0.)/8   # (90 ~ 510)/8 MBps
+        cpu = round(max(5 + 1 * np.random.randn(1)[0], 1.))       # 2 ~ 8
+        mem = round(max(10e3 + 2e3 * np.random.randn(1)[0], 1.))  # 4e3 ~ 16e3
+        bw = round(max(300 + 70 * np.random.randn(1)[0], 1.))/8   # (90 ~ 510)/8 MBps
         isOpen = False
         isMobile = True
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
@@ -416,9 +464,9 @@ class MobileDevice(Client):
 
 class IoTDevice(Client):
     def __init__(self, id):
-        cpu = max(5 + 1 * np.random.randn(1)[0], 0.)       # 2 ~ 8
-        mem = max(5e3 + 1e3 * np.random.randn(1)[0], 0.)   # 2e3 ~ 8e3
-        bw = max(100 + 30 * np.random.randn(1)[0], 0.)/8   # (10 ~ 190)/8 MBps
+        cpu = round(max(5 + 1 * np.random.randn(1)[0], 1.))       # 2 ~ 8
+        mem = round(max(5e3 + 1e3 * np.random.randn(1)[0], 1.))   # 2e3 ~ 8e3
+        bw = round(max(100 + 30 * np.random.randn(1)[0], 1.))/8   # (10 ~ 190)/8 MBps
         isOpen = True
         isMobile = np.random.randint(0,10) < 6          # 60% devices are mobile
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)

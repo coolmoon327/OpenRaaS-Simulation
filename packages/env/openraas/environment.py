@@ -54,6 +54,12 @@ class Environment(object):
     def generate_topology(self):
         # In a RL game, maybe we should not reset the topology so that the agent can learn more potential details in its neu-network
         
+        # if want to simulate another cloud paradigm
+        # 1. cloud-centric: use an area as remote cloud, clients there won't require any task
+        # microservice composition is as usual but only executed in the remote cloud area
+        # 2. totally edge: only use edge servers to provide microservices
+        # before excution, the compute worker has to fetch application data instead of mounting them
+        
         M, N = self.M, self.N
         # generate devices
         self.devices.clear()
@@ -125,6 +131,9 @@ class Environment(object):
         
         # self.topology.reset()
         # self.generate_topology()
+        self.next()
+        state = self.get_state()
+        return state
     
     def next(self):
         M, N = self.M, self.N
@@ -149,18 +158,16 @@ class Environment(object):
                 filestore = self.devices[task.get_provider(1)]
                 depositories = task.get_provider(2)
                 
-                compute.release_task(0, task)
-                filestore.release_task(1, task)
                 self.topology.release_between_devices(client, compute, task.bandwidth(0))
                 self.topology.release_between_devices(compute, filestore, task.bandwidth(1))
+                compute.release_task(0, task)
+                filestore.release_task(1, task)
+                client.req_tasks.remove(task)
                 
                 for d in depositories:
                     depository = self.devices[d]
-                    depository.release_task(2, task)
                     self.topology.release_between_devices(compute, depository, task.bandwidth(2))
-                
-                # TODO: settle a bill
-                pass
+                    depository.release_task(2, task)
                 
         for task in removed_tasks:
             self.scheduled_tasks.remove(task)
@@ -168,38 +175,51 @@ class Environment(object):
         # 4. collect new tasks from client devices
         for j in range(N):
             i = self.M + j
-            self.new_tasks += self.devices[i].req_tasks
+            self.new_tasks += self.devices[i].new_tasks
             
     def get_state(self):
         """
         Returns:
             state (np.array)
         """
+        for device in self.devices:
+            device.preoccupied_resource = [0., 0., 0.]
         state = []
         for task in self.new_tasks:
             # 4.1 find the closest devices as compute candidates
             # edge_area = self.topology.areas[self.topology.device_to_area[task.user_id]]
             # for device_id in edge_area.devices:
                 # device = self.devices[device_id]
-            minn = 1e6
-            target_c = -1
-            for device in self.devices:
-                if device.id == task.user_id or (not device.check_task_availability(0, task)):
-                    continue
-                _, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
-                if l < minn:
-                    minn = l
-                    target_c = device.id
-            if target_c == -1:
-                # TODO: dropped task flag
+            client = self.devices[task.user_id]
+            dropped = task.bandwidth(0) > client.bw
+            
+            if not dropped:
+                minn = 1e6
+                target_c = -1
+                for device in self.devices:
+                    if device.id == task.user_id or (not device.check_task_availability(0, task)):
+                        continue
+                    _, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
+                    if l < minn:
+                        minn = l
+                        target_c = device.id
+                if target_c == -1:
+                    dropped = True
+            
+            if dropped:
                 state.append([-1. for _ in range(self.task_info_num+2+1+self.candidates_num*self.filestore_info_num)])
+                self.fs_candidates.append([])
                 continue
             
+            compute = self.devices[target_c]
             task.set_provider(0, target_c)
-            self.devices[target_c].preoccupied_resource[0] += task.cpu
-            self.devices[target_c].preoccupied_resource[1] += task.mem
-            self.devices[target_c].preoccupied_resource[2] += task.bandwidth(0) + task.bandwidth(1)
-            self.devices[task.user_id].preoccupied_resource[2] += task.bandwidth(0)
+            task.missing_layers = self.devices[target_c].find_missing_layers(task)
+            
+            compute.preoccupied_resource[0] += task.cpu
+            if task.type != 1:
+                compute.preoccupied_resource[1] += task.mem
+            compute.preoccupied_resource[2] += task.bandwidth(0) + task.bandwidth(1)
+            client.preoccupied_resource[2] += task.bandwidth(0) # client
             
             # 4.2 find devices with the target application as filestore candidates (return 10 candidates)
             # 4.2.1 finds all available devices
@@ -216,7 +236,7 @@ class Environment(object):
                 # every device is pre-allocated
                 self.devices[fs_id].preoccupied_resource[2] += task.bandwidth(1)
                 if task.type == 1:
-                    self.devices[fs_id].preoccupied_resource[1] += task.storage_size
+                    self.devices[fs_id].preoccupied_resource[1] += task.mem
             
             # 4.2.3 sort by priority and take the first 10 devices
             dict_p = dict(sorted(dict_p.items(), key=lambda item: -item[1]))
@@ -227,27 +247,24 @@ class Environment(object):
             # 4.3 find devicces with the target layers as depository candidates
             # depository workers have two ways to choose: 1. all candidates 2. a target worker
             # if use the first one, we should modify the provider method of Task class
-            missing_layers = self.devices[target_c].find_missing_layers(task)
-            depositories = []
-            for layer_id in missing_layers:
+            for layer_id in task.missing_layers:
                 layer = LayerList.get_data_by_id(layer_id)
                 if len(layer.hosts) == 0:
                     # cannot execute this task because of layer lacking, dropping in the service compostion step
                     depositories = []
                     break
-                depositories += layer.hosts
-            for d_id in depositories:
-                if self.devices[d_id].check_task_availability(2, task):
-                    task.set_provider(2, d_id)
-                    # every device is pre-allocated
-                    self.devices[layer_id].preoccupied_resource[1] += task.mem
-                    self.devices[layer_id].preoccupied_resource[2] += task.bandwidth(2)        
-            avail_d = task.get_provider(2)
+                for d_id in layer.hosts:
+                    if d_id not in task.get_provider(2) and self.devices[d_id].check_task_availability(2, task):
+                        task.set_provider(2, d_id)
+                        # every device is pre-allocated
+                        self.devices[d_id].preoccupied_resource[2] += task.bandwidth(2)
+                        compute.preoccupied_resource[2] += task.bandwidth(2)
             
             # 4.4 arrange the observation
-            task_info = [task.cpu, task.mem, task.span]
-            # TODO: set the worker type
-            worker_info = [0, self.topology.get_device_interface_link_by_id(target_c).bandwidth]
+            # task_info = [task.cpu, task.mem, task.span]
+            task_info = [task.u_0(), task.qos[1], task.qos[2], task.qos[3]] # the scheduler only decides which filestore to be chosen, so only delay, speed, and jilter influence
+                                                                            # it also decides whether droping this task
+            worker_info = [self.devices[target_c].worker_type, self.topology.get_device_interface_link_by_id(target_c).bandwidth]
             candidates_info = [all_candidates_num]
             for fs_id in prior_candidates:
                 interface = self.topology.get_device_interface_link_by_id(fs_id)
@@ -274,6 +291,7 @@ class Environment(object):
         # TODO: add something about topology.occupied_time to estimate the real delay
         
         # 1. execute service composition
+        rewards = []
         for i in range(len(action)):
             # print(i)
             task = self.new_tasks[i]
@@ -286,33 +304,68 @@ class Environment(object):
                 continue
             
             task.set_provider(1, self.fs_candidates[i][action[i]])
-            client = self.devices[task.user_id]
             
-            if task.get_provider(0) == -1 or task.get_provider(1) == -1 or len(task.get_provider(2)) == 0 or task.bandwidth(0) > client.bw:
+            if not task.is_allocated():
                 # this task cannot be composed
                 continue
             
+            client = self.devices[task.user_id]
             compute = self.devices[task.get_provider(0)]
             filestore = self.devices[task.get_provider(1)]
-            depositories = task.get_provider(2)
+            depositories = task.get_provider(2) # TODO: sometimes there are d_ids appear more than one times
+            
+            # bidding
+            # b-1 estimate utility
+            uc_speed, uc_latency, uc_jilter = self.topology.get_link_states_between_devices(client, compute)
+            cf_speed, cf_latency, cf_jilter = self.topology.get_link_states_between_devices(compute, filestore)
+            cd_latency = 0.
+            for d in depositories:
+                cd_latency = max(cd_latency, self.topology.get_link_states_between_devices_by_id(compute.id, d)[1])
+            
+            start_delay = cd_latency # TODO: add download time
+            service_latency = cf_latency + uc_latency
+            speed = min(uc_speed, cf_speed)
+            jilter = uc_jilter + cf_jilter
+            
+            utility = task.utility(start_delay, service_latency, speed, jilter)
+        
+            # b-2 estimate cost
+            # should get unit price before allocation!!!
+            c_price = compute.unit_price(0) * task.cpu + compute.unit_price(2) * (task.bandwidth(0) + task.bandwidth(1))
+            fs_price = filestore.unit_price(2) * task.bandwidth(1)
+            if task.type != 1:
+                c_price += compute.unit_price(1) * task.mem
+                # TODO: how to change the fs to use downloading volumn as the charge reference 
+            else:
+                fs_price += filestore.unit_price(1) * task.mem
+            d_price = 0.
+            for d in depositories:
+                d_price += self.devices[d].unit_price(2) * task.bandwidth(2)
+                # TODO: how to charge by downloading
+            
+            cost = c_price + fs_price + d_price
+            rewards.append(utility - cost)
             
             # resource changes
-            compute.preoccupied_resource = [0., 0., 0.]
-            filestore.preoccupied_resource = [0., 0., 0.]
-            compute.allocate_tasks(0, task) # TODO: we should pre-allocate resource for C and D! and release it no matter whether we execute it or not
-            filestore.allocate_tasks(1, task)
+            compute.allocate_tasks(0, task) # we should pre-allocate resource for C and D! and release it no matter whether we execute it or not
+            filestore.allocate_tasks(1, task)   # be careful sometimes the c is the f
             self.topology.transmit_between_devices(client, compute, task.bandwidth(0))
             self.topology.transmit_between_devices(compute, filestore, task.bandwidth(1))
             
             for d in depositories:
                 depository = self.devices[d]
-                depository.preoccupied_resource = [0., 0., 0.]
                 depository.allocate_tasks(2, task)
                 self.topology.transmit_between_devices(compute, depository, task.bandwidth(2))
             
             # add newly executed ones in scheduled_tasks
             self.scheduled_tasks.append(task)
-            
+            client.req_tasks.append(task)
+        
+        for device in self.devices:
+            err = device.check_error()
+            if err != 0:
+                raise ValueError(f"Error with tag {err} occurs in device {device.id}.")
+
         # 2. enter next step and gain new states
         self.next()
         
@@ -320,17 +373,16 @@ class Environment(object):
         self.reload_env_info(self.new_tasks.__len__())
         
         # 4. get state data
-        # state = self.get_state()
+        state = self.get_state()
         
-        # 5. return the new state
-        # some task with long span cannot get instantaneous reward
-        # TODO: maybe we should temporally store those state until its reward generated?
-        # Or we settle its bill by estimation instead of waiting to finish the task
+        # 5. get rewards
+        # Problem: some task with long span cannot get instantaneous reward
+        # a) Maybe we should temporally store those state in a database until its reward generated? (X)
+        # a-1 self.scheduled_tasks
+        # a-2 states before those tasks
+        # a-3 states after those tasks (randomly choose a task state in next slot)
+        # a-4 reward
+        # b) Or we settle its bill by estimation instead of waiting to finish the task (O)
         
-        # TODO: We should build a database to store the executing task info
-        # 1. self.scheduled_tasks
-        # 2. states before those tasks
-        # 3. states after those tasks (randomly choose a task state in next slot)
-        # 4. reward
         
-        # return state
+        return state, rewards
