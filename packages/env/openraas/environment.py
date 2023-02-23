@@ -187,11 +187,8 @@ class Environment(object):
         state = []
         for task in self.new_tasks:
             # 4.1 find the closest devices as compute candidates
-            # edge_area = self.topology.areas[self.topology.device_to_area[task.user_id]]
-            # for device_id in edge_area.devices:
-                # device = self.devices[device_id]
             client = self.devices[task.user_id]
-            dropped = task.bandwidth(0) > client.bw
+            dropped = task.bandwidth(0) > client.bw - client.preoccupied_resource[2]
             
             if not dropped:
                 minn = 1e6
@@ -312,7 +309,7 @@ class Environment(object):
             client = self.devices[task.user_id]
             compute = self.devices[task.get_provider(0)]
             filestore = self.devices[task.get_provider(1)]
-            depositories = task.get_provider(2) # TODO: sometimes there are d_ids appear more than one times
+            depositories = task.get_provider(2)
             
             # bidding
             # b-1 estimate utility
@@ -360,6 +357,9 @@ class Environment(object):
             # add newly executed ones in scheduled_tasks
             self.scheduled_tasks.append(task)
             client.req_tasks.append(task)
+
+        if rewards.__len__() == 0:
+            print("Wranning.")
         
         for device in self.devices:
             err = device.check_error()

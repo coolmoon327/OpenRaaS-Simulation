@@ -49,7 +49,7 @@ class Device(object):
         
         # 2. update work load
         # be care the self.mem is prepared for OpenRaaS, and cannot be occupied by internal processes
-        cpu_offset = self.capacity[0] * (0.03 +  0.03 * np.random.randn(1)[0])   # -0.06 ~ 0.12 of cpu capacity, more probability to be idle
+        cpu_offset = self.capacity[0] * (0.03 * np.random.randn(1)[0])   # -0.09 ~ 0.9 of cpu capacity
         new_cpu = np.clip(self.cpu+cpu_offset, 0., self.capacity[0]-self.external_cpu_occupation())
         self.inner_cpu += self.cpu - new_cpu
         self.cpu = new_cpu
@@ -62,15 +62,6 @@ class Device(object):
                 remove_list.append(layer)
         for layer in remove_list:
             self.remove_layer(layer)
-        
-        # Warning: shouldn't update task here, because one task instance may be handled by three workers by weak copy. We should update it in the environment.py
-        # # 3. update task state
-        # for task in self.cal_tasks + self.metaos_tasks + self.image_tasks:
-        #     task.step()
-        #     if task.life_time == 0:
-        #         # release expired tasks
-        #         pass
-        #         # billing
     
     def external_cpu_occupation(self):
         cpu = 0.
@@ -308,7 +299,7 @@ class Device(object):
             r = self.mem
         if resource_type == 2:
             r = self.bw
-        return r/self.capacity[resource_type]
+        return 1 - r/self.capacity[resource_type]
     
     def unit_price(self, resource_type):
         """

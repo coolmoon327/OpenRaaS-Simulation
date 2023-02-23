@@ -78,4 +78,12 @@ class SimulationAgent(object):
                 # 3. go into next step
                 state, reward, _ = env.step(actions)
                 
-                print(f"E{episode}S{step}: reward={np.mean(reward)}")
+                occupation = [[],[],[]]
+                for device in env.env.devices:
+                    for i in range(3):
+                        occupation[i].append(device.idle_resource_occupation_rate(i))
+                
+                if reward.__len__() == 0:
+                    print("Wranning.")
+                
+                print(f"E{episode}S{step}: reward={np.mean(reward)}, occupation rate:{np.mean(occupation[0])}, {np.mean(occupation[1])}, {np.mean(occupation[2])}")

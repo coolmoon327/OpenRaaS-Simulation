@@ -31,10 +31,11 @@ class Task(object):
         return ans
     
     def is_allocated(self):
-        if self.get_provider(0) == -1 or self.get_provider(1) == -1 or len(self.get_provider(2)) == 0:
+        if self.get_provider(0) == -1 or self.get_provider(1) == -1:
             return False
-        else:
-            return True
+        if len(self.lack_layers) and len(self.get_provider(2)) == 0:
+            return False
+        return True
     
     def bandwidth(self, type):
         '''get bandwidth occupation
