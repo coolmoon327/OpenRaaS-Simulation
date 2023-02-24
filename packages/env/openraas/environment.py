@@ -17,6 +17,10 @@ class Environment(object):
     
         if len(config):
             self.load_config(config)
+        
+        # logs
+        self.rewards = []
+        self.served_percent = 0.
     
     def load_config(self, config):
         self.config = config
@@ -34,10 +38,36 @@ class Environment(object):
         self.reset()
         self.reload_env_info()
     
+    def reset(self):
+        self.scheduled_tasks.clear()
+        self.new_tasks.clear()
+        self.fs_candidates.clear()
+        
+        for device in self.devices:
+            device.reset()
+        
+        # self.topology.reset()
+        # self.generate_topology()
+        self.next()
+        state = self.get_state()
+        return state
+    
+    def seed(self, seed):
+        # env.seed(seed) # env config
+        np.random.seed(seed)
+        # random.seed(seed)
+        # torch.manual_seed(seed) # config for CPU
+        # torch.cuda.manual_seed(seed) # config for GPU
+        # os.environ['PYTHONHASHSEED'] = str(seed) # config for python scripts
+        # # config for cudnn
+        # torch.backends.cudnn.deterministic = True
+        # torch.backends.cudnn.benchmark = False
+        # torch.backends.cudnn.enabled = False
+    
     def reload_env_info(self, tasks_num=1):
         # State Design
         self.n_actions = tasks_num  # tasks number per step
-        # self.observation_space = spaces.Tuple((spaces.Box(-1000., 1000., (1, self.task_info_num)),     
+        # self.observation_space = spaces.Tuple([spaces.Box(-1000., 1000., (1, self.task_info_num)),     
         #                                         # 1. tasks information
         #                                         spaces.Discrete(self.compute_type_num), spaces.Box(-1000., 1000., (1, 1)),           
         #                                         # 2. compute worker information: type (estimated by the global master), interface bandwidth
@@ -45,7 +75,7 @@ class Environment(object):
         #                                         # 3. total filestore candidates number
         #                                         spaces.Box(-1000., 1000., (1, self.filestore_info_num)) for _ in range(self.candidates_num))
         #                                         # 4. information of the top candidates_num priorities
-        #                                        for __ in range(self.n_actions))    # (n_actions, ?)
+        #                                        for __ in range(self.n_actions])    # (n_actions, ?)
         
         # Action Design: the selected index of given 10 filestores (for n_actions tasks)
         # Each step may change the n_actions (because the tasks number is dynamic in different slots), so dislike other envs, engine should check the space per step
@@ -61,6 +91,7 @@ class Environment(object):
         # before excution, the compute worker has to fetch application data instead of mounting them
         
         M, N = self.M, self.N
+        
         # generate devices
         self.devices.clear()
         for i in range(M):
@@ -82,58 +113,63 @@ class Environment(object):
         self.topology.check_areas() # debug
         
         # distribute layers & applications
+        storage_app = ApplicationList.get_list(1)[0]    # every worker has this 0 size app
+        
         # 1. at least one server storing this data
         List = LayerList
         for _ in range(2):
             for type in range(List.type_num):
                 l = List.get_list(type)
                 for data in l:
+                    if storage_app == data:
+                        for device in self.devices:
+                            if device.is_worker:
+                                device.store_data(data)
+                        continue
+                        
                     ori = np.random.randint(0, M)
                     index = ori
-                    while (self.devices[index].id in data.hosts) and (not self.devices[index].is_enough_for_storing(data)):
+                    while (not self.devices[index].is_worker) or (not self.devices[index].is_enough_for_storing(data)):
                         index = index+1 if index < M-1 else 0
                         if index == ori:
                             # all M servers cannot store it, set error flag
                             raise ValueError(f"Data with id {data.id} cannot be stored in any a server!")
+                    
                     self.devices[index].store_data(data)    # host_id is appended in this method. if not, check it
             List = ApplicationList
             
         # 2. every device has a chance to store some arbitrary data
         for device in self.devices:
-            while True:
-                # a) chance
-                r1 = np.random.randint(0, 10)
-                if r1 > 3:   # 20%
-                    break
-                # b) layer 80% or app 20%
-                r2 = np.random.randint(0, 4)
-                for _ in range(2):
-                    if r2 == 0:
-                        List = ApplicationList
-                    else:
-                        List = LayerList
-                    # c) data
-                    data = List.get_arbitrary_data()
-                    timer = 10  # random times
-                    while timer and (device.id in data.hosts) and (not device.is_enough_for_storing(data)):
-                        data = List.get_arbitrary_data()
-                        timer -= 1
-                    if (device.id not in data.hosts) and device.is_enough_for_storing(data):
-                        device.store_data(data)
-                        break   # success, jump out of the loop
-                    
-                    r2 = not r2
-    
-    def reset(self):
-        self.scheduled_tasks.clear()
-        self.new_tasks.clear()
-        self.fs_candidates.clear()
-        
-        # self.topology.reset()
-        # self.generate_topology()
-        self.next()
-        state = self.get_state()
-        return state
+            if not device.is_worker:
+                continue
+            
+            # now use is_worker flag to indicate the chance
+            # # a) chance
+            # r1 = np.random.randint(0, 10)
+            # if r1 > 3:   # 20%
+            #     continue
+            
+            # b) layer 80% or app 20%
+            r2 = np.random.randint(0, 4)
+            for _ in range(2):
+                if r2 == 0:
+                    List = ApplicationList
+                else:
+                    List = LayerList
+                # c) data
+                data = List.get_arbitrary_data()
+                ori = data.id
+                avai_flag = True
+                while (device.id in data.hosts) or (not device.is_enough_for_storing(data)):
+                    data = List.get_next_data(data)
+                    if data.id == ori:
+                        avai_flag = False
+                        break
+                if avai_flag:
+                    device.store_data(data)
+                    break   # success, jump out of the loop
+                
+                r2 = not r2
     
     def next(self):
         M, N = self.M, self.N
@@ -194,7 +230,7 @@ class Environment(object):
                 minn = 1e6
                 target_c = -1
                 for device in self.devices:
-                    if device.id == task.user_id or (not device.check_task_availability(0, task)):
+                    if not device.is_worker or device.id == task.user_id or (not device.check_task_availability(0, task)):
                         continue
                     _, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
                     if l < minn:
@@ -270,16 +306,16 @@ class Environment(object):
             i = all_candidates_num
             while i < self.candidates_num:
                 i+=1
-                candidates_info += [0., 0., 0.]
+                candidates_info += [-1., -1., -1.]
             
             if len(candidates_info) != 1 + self.candidates_num * self.filestore_info_num:
                 raise ValueError(f"Candidates information number {len(candidates_info)} of task {task.id} does not equal to {1 + self.candidates_num * self.filestore_info_num}")
             
             state.append(task_info+worker_info+candidates_info)
         
-        state = np.array(state)
+        self.state = np.array(state)
         
-        return state
+        return self.state
     
     def step(self, action):
         if len(action) != len(self.new_tasks):
@@ -288,13 +324,15 @@ class Environment(object):
         # TODO: add something about topology.occupied_time to estimate the real delay
         
         # 1. execute service composition
-        rewards = []
+        self.served_num = 0
+        self.all_num = len(self.new_tasks)
+        self.rewards.clear()
         for i in range(len(action)):
             # print(i)
             task = self.new_tasks[i]
             
             if not -1 <= action[i] < self.fs_candidates[i].__len__():
-                raise ValueError("Error action {action[i]} is larger than the candidates number {self.fs_candidates[i].__len__()}")
+                raise ValueError(f"Error action {action[i]} is larger than the candidates number {self.fs_candidates[i].__len__()}")
             
             if action[i] == -1:
                 # this task cannot be composed
@@ -341,7 +379,7 @@ class Environment(object):
                 # TODO: how to charge by downloading
             
             cost = c_price + fs_price + d_price
-            rewards.append(utility - cost)
+            self.rewards.append(utility - cost)
             
             # resource changes
             compute.allocate_tasks(0, task) # we should pre-allocate resource for C and D! and release it no matter whether we execute it or not
@@ -357,8 +395,11 @@ class Environment(object):
             # add newly executed ones in scheduled_tasks
             self.scheduled_tasks.append(task)
             client.req_tasks.append(task)
+            self.served_num += 1
 
-        if rewards.__len__() == 0:
+        self.served_percent = 1.*self.served_num/self.all_num
+
+        if self.rewards.__len__() == 0 and np.sum(action) != len(self.state) * -1.:
             print("Wranning.")
         
         for device in self.devices:
@@ -385,4 +426,4 @@ class Environment(object):
         # b) Or we settle its bill by estimation instead of waiting to finish the task (O)
         
         
-        return state, rewards
+        return state, self.rewards

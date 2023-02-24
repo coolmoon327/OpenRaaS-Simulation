@@ -111,7 +111,7 @@ class Task(object):
 class ProcessTask(Task):
     def __init__(self,  user_id=-1):
         cpu = max(20 + 3 * np.random.randn(1)[0], 0.)       # 11 ~ 29
-        mem = max(5 + 1 * np.random.randn(1)[0], 0.)       # 2 ~ 8
+        mem = 5 # max(5 + 1 * np.random.randn(1)[0], 0.)       # 2 ~ 8
         super().__init__(0, cpu, mem, user_id)
         self.set_QoS_weight()
 
@@ -122,11 +122,12 @@ class StorageTask(Task):
         this task should give its storing time span
         different from others, its memory size will affect the filestore worker instead of the compute worker
         '''
-        span = round(max(10 + 2 * np.random.randn(1)[0], 1.))        # 4 ~ 16 time slots (2h ~ 8h) existing on the cloud drive
-        file_num = int(4 + np.random.randn(1)[0])            # 1 ~ 7 files
-        mem = 0
+        span = round(max(20 + 5 * np.random.randn(1)[0], 1.))        # 5 ~ 35 time slots (2h ~ 8h) existing on the cloud drive
+        # span = 1
+        file_num = int(max(7 + 2 * np.random.randn(1)[0], 1.))            # 1 ~ 13 files
+        mem = 0.
         for i in range(file_num):
-            mem += max(50 + 15 * np.random.randn(1)[0], 0.)       # 5 ~ 95 MB per file
+            mem += max(200 + 50 * np.random.randn(1)[0], 0.)       # 50 ~ 350 MB per file
         super().__init__(1, 0., mem, user_id, span)
         self.set_QoS_weight()
 
@@ -136,8 +137,9 @@ class DesktopTask(Task):
         '''
         this task should give its lasting time span
         '''
-        cpu = max(5 + 1.5 * np.random.randn(1)[0], 0.)       # 0.5 ~ 9.5
+        cpu = max(10 + 3 * np.random.randn(1)[0], 0.)       # 1 ~ 19
         span = round(max(3 + 1 * np.random.randn(1)[0], 1.))        # 1 ~ 6 time slots (30m ~ 3h) existing on the cloud drive
+        # span = 1
         super().__init__(2, cpu, 0., user_id, span)
         self.set_QoS_weight()
         

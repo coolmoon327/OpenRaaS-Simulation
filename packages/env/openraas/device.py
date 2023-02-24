@@ -23,20 +23,20 @@ class Device(object):
         self.image_tasks: list[DesktopTask] = []       # serve as a depository worker        
         self.reset()
         
+        self.is_worker = True
         self.worker_type = 0
         self.p_coef = [(np.random.randint(50, 100) / 100.), (np.random.randint(50, 100) / 100. / 1000.), (np.random.randint(50, 100) / 100.) ]  # p_coef = [0.5, 1]
         # TODO: design how to charge
     
     def reset(self):
         # not reset layers & apps
-        self.cpu = self.capacity[0]             # Spare computation capability: GigaFlops
+        self.inner_cpu= self.capacity[0] * min(1., max(0., (0.5 + 0.15 * np.random.randn(1)[0])))
+        self.cpu = self.capacity[0] - self.inner_cpu   # Spare computation capability: GigaFlops
         self.mem = self.capacity[1]             # Storage space for OpenRaaS: MegaBytes
         self.bw = self.capacity[2]              # bandwidth: MegaBytes
                                                 # the remaining bandwidth only be considered in a desktop application scenario
                                                 # other services only occupy network links for several seconds, which should be taken as the startup delay
         self.preoccupied_resource = [0., 0., 0.]
-        
-        self.inner_cpu = 0.
         
         self.cal_tasks.clear()
         self.metaos_tasks.clear()
@@ -49,7 +49,7 @@ class Device(object):
         
         # 2. update work load
         # be care the self.mem is prepared for OpenRaaS, and cannot be occupied by internal processes
-        cpu_offset = self.capacity[0] * (0.03 * np.random.randn(1)[0])   # -0.09 ~ 0.9 of cpu capacity
+        cpu_offset = self.capacity[0] * (0.1 * np.random.randn(1)[0])   # -0.3 ~ 0.3 of cpu capacity
         new_cpu = np.clip(self.cpu+cpu_offset, 0., self.capacity[0]-self.external_cpu_occupation())
         self.inner_cpu += self.cpu - new_cpu
         self.cpu = new_cpu
@@ -272,14 +272,14 @@ class Device(object):
     ## data arrangement
     
     def is_enough_for_storing(self, data: Data):
-        if self.mem > data.size:
+        if self.mem >= data.size:
             return True
         else:
             return False
     
     def store_data(self, data: Data):
         if not self.is_enough_for_storing(data):
-            raise ValueError(f"Cannot store the input data in device {self.id}")
+            raise ValueError(f"Cannot store the input data {data.id}:{data.print_type()} in device {self.id}")
         self.mem -= data.size
         if data.type == -1:
             raise ValueError(f"Data with id {data.id} didn't set type value!")
@@ -299,7 +299,7 @@ class Device(object):
             r = self.mem
         if resource_type == 2:
             r = self.bw
-        return 1 - r/self.capacity[resource_type]
+        return 1.-r/self.capacity[resource_type]
     
     def unit_price(self, resource_type):
         """
@@ -382,6 +382,7 @@ class Server(Device):
 class Client(Device):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
+        self.is_worker = True if np.random.randint(0, 10) < 0 else False    # 20% to be a worker
         
     # def set_requirement_type(self, type):
     #     '''set requirement type
@@ -405,7 +406,14 @@ class Client(Device):
     
     def generate_task(self, task_type=-1):
         if task_type == -1:
-            task_type = np.random.randint(0,3)
+            r = np.random.randint(0,100)    # 1:6:3
+            if r < 10:
+                task_type = 0
+            elif r < 70:
+                task_type = 1
+            else:
+                task_type = 2
+            
         if task_type == 0:
             task = ProcessTask(self.id)
         elif task_type == 1:
@@ -423,8 +431,8 @@ class Client(Device):
         super().step()
         # generate new tasks
         self.new_tasks.clear()
-        if np.random.randint(0,10) < 2:     # 20% chance to gain a new requirement
-            self.generate_task()
+        if np.random.randint(0,10) < 5:     # 50% chance to gain a new requirement
+            self.generate_task(1)
 
 
 class Desktop(Client):

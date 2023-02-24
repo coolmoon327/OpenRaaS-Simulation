@@ -138,6 +138,13 @@ class LayerList(object):
         return layerlist[index]
     
     @classmethod
+    def get_next_data(cls, data):
+        index = data.id + 1
+        if index >= cls.layers.__len__():
+            return cls.layers[0]
+        return cls.layers[index]
+    
+    @classmethod
     def get_list(cls, layer_type=-1):
         '''
         -1: all
@@ -197,6 +204,7 @@ class ApplicationList(object):
             cls.process_apps.append(app)
             index += 1
         # storage
+        # every compatible worker can become a storage filestore, so every device has this app
         app = Application(index, 0., 11)
         osl = LayerList.get_list(0)[0]
         dl = LayerList.get_list(1)[0]
@@ -233,6 +241,13 @@ class ApplicationList(object):
         index = np.random.randint(0, num)
         return applist[index]
 
+    @classmethod
+    def get_next_data(cls, data):
+        index = data.id + 1
+        if index >= cls.apps.__len__():
+            return cls.apps[0]
+        return cls.apps[index]
+    
     @classmethod
     def get_list(cls, app_type=-1):
         '''

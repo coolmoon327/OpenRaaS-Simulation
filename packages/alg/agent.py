@@ -43,6 +43,7 @@ class SimulationAgent(object):
                 compute_info = []       # (num, 2)
                 all_cand_num = []       # (num, 1)
                 top_cand_info = []      # (num, candidates_num, filestore_info_num)
+                true_candidates_num = [candidates_num for _ in range(num)]
                 
                 for n in range(num):
                     self.temp_point = 0
@@ -53,6 +54,9 @@ class SimulationAgent(object):
                     sepeated_cand_info = []
                     for i in range(candidates_num):
                         info = candidates[i * filestore_info_num : (i+1) * filestore_info_num]
+                        if np.sum(info) == -3.:
+                            true_candidates_num[n] = i
+                            break
                         sepeated_cand_info.append(info)
                     top_cand_info.append(sepeated_cand_info)
                 
@@ -64,12 +68,12 @@ class SimulationAgent(object):
                 # 2. gain action
                 actions = []
                 for i in range(num):
-                    if compute_info[i][0] == -1.:
+                    if compute_info[i][0] == -1. or true_candidates_num[i] == 0:
                         actions.append(-1)
                         continue
-                    bws = [top_cand_info[i][j][0] for j in range(candidates_num)]
-                    ls = [top_cand_info[i][j][1] for j in range(candidates_num)]
-                    js = [top_cand_info[i][j][2] for j in range(candidates_num)]
+                    bws = [top_cand_info[i][j][0] for j in range(true_candidates_num[i])]
+                    ls = [top_cand_info[i][j][1] for j in range(true_candidates_num[i])]
+                    js = [top_cand_info[i][j][2] for j in range(true_candidates_num[i])]
                     a = self.alg.get_action(compute_info[i][1], bws, ls, js)
                     actions.append(a)
             
@@ -78,12 +82,4 @@ class SimulationAgent(object):
                 # 3. go into next step
                 state, reward, _ = env.step(actions)
                 
-                occupation = [[],[],[]]
-                for device in env.env.devices:
-                    for i in range(3):
-                        occupation[i].append(device.idle_resource_occupation_rate(i))
-                
-                if reward.__len__() == 0:
-                    print("Wranning.")
-                
-                print(f"E{episode}S{step}: reward={np.mean(reward)}, occupation rate:{np.mean(occupation[0])}, {np.mean(occupation[1])}, {np.mean(occupation[2])}")
+                print(f"E{episode}S{step}: reward={np.mean(reward)}")
