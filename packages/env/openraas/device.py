@@ -120,18 +120,18 @@ class Device(object):
     #         i = self.layers.index(layer.id)
     #         self.timers[i] = self.default_timer
     
-    def push_layer(self, layer=None, layer_id=-1):
-        if layer_id == -1:
-            layer_id = layer.id
-        if layer_id not in self.layers:
-            raise ValueError(f"The layer {layer_id} does not exist in this device {self.id}.")
-        # self.refresh_layer_timers(layer=layer)
-        self.timers[self.layers.index(layer_id)] = self.default_timer
+    # def push_layer(self, layer=None, layer_id=-1):
+    #     if layer_id == -1:
+    #         layer_id = layer.id
+    #     if layer_id not in self.layers:
+    #         raise ValueError(f"The layer {layer_id} does not exist in this device {self.id}.")
+    #     # self.refresh_layer_timers(layer=layer)
+    #     self.timers[self.layers.index(layer_id)] = self.default_timer
         
-        # TODO: occupation calculation
-        # We use all depositories working in the P2P file-sharing mode, so everyone only spends a piece of bandwidth
-        # The details should be implemented in the environment.py
-        pass
+    #     # TODO: occupation calculation
+    #     # We use all depositories working in the P2P file-sharing mode, so everyone only spends a piece of bandwidth
+    #     # The details should be implemented in the environment.py
+    #     pass
     
     ### tasks execution
     
@@ -195,7 +195,7 @@ class Device(object):
             raise ValueError(f"Input microservice_type {microservice_type} is out of range!")
         return ans
     
-    def allocate_tasks(self, microservice_type, task):
+    def allocate_tasks(self, microservice_type, task, layer_id=-1):
         '''allocate task to this device, and specify its microservice character
         microservice_type is used to specify the identity of this device 
         0: the compute worker, and add the task into cal_tasks
@@ -215,7 +215,8 @@ class Device(object):
                 self.mem -= task.mem
             # fetch layers
             for layer in task.app.env_layers:
-                if layer.id not in self.layers:
+                # if layer.id not in self.layers:
+                if layer.id in task.missing_layers:
                     self.fetch_layer(layer)
                 else:
                     # self.refresh_layer_timers(layer=layer)
@@ -225,12 +226,16 @@ class Device(object):
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
                 self.mem -= task.mem
-        
+
         elif microservice_type == 2:
             # push layers
-            for layer_id in task.missing_layers:
-                if layer_id in self.layers:
-                    self.push_layer(layer_id=layer_id)
+            # index = task.get_providers(2).index(self.id)
+            # layer_id = task.missing_layers[index]
+            local_index = self.layers.index(layer_id)
+            self.timers[local_index] = self.default_timer
+            # for layer_id in task.missing_layers:
+            #     if layer_id in self.layers:
+            #         self.push_layer(layer_id=layer_id)
     
     def release_task(self, microservice_type, task):
         '''release a target task from list
@@ -253,8 +258,8 @@ class Device(object):
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
                 self.mem += task.mem
-        elif microservice_type == 2:
-            pass
+        # elif microservice_type == 2:
+        #     pass
     
     def release_task_by_taskid(self, microservice_type, task_id):
         tasks = self.get_tasks_set(microservice_type)
@@ -348,7 +353,7 @@ class Device(object):
                 bw += task.bandwidth(2)
         # as a client, it transfers data to the compute node
         for task in self.req_tasks:
-            if task.is_allocated():
+            if not task.dropped:
                 bw += task.bandwidth(0)
             
         # 2.2 stored applications & images

@@ -16,9 +16,21 @@ class Task(object):
         self.id = task_num
         task_num += 1
         
-        self.lack_layers = []
+        self.dropped = False
+        
+        self.missing_layers = []
         
         self.reset()
+    
+    def reset(self):
+        self.app = ApplicationList.get_arbitrary_data(self.type)
+        self.providers = [-1, -1, []]
+        self.life_time = self.span  # the rest time slot it can survive on the cloud
+    
+    def step(self):
+        self.life_time -= 1
+        if self.life_time < 0:
+            raise TimeoutError(f"The task {self.id} is out of date, but nobody deals with it!")
     
     def u_0(self):
         qos = self.qos
@@ -30,23 +42,14 @@ class Task(object):
         ans = self.u_0() + qos[0] * start_delay + qos[1] * service_latency + qos[2] * speed + qos[3] * jilter
         return ans
     
-    def is_allocated(self):
-        if self.get_provider(0) == -1 or self.get_provider(1) == -1:
-            return False
-        if len(self.lack_layers) and len(self.get_provider(2)) == 0:
-            return False
-        return True
+    # def is_allocated(self):
+    #     if self.get_provider(0) == -1 or self.get_provider(1) == -1:
+    #         return False
+    #     if len(self.missing_layers) and len(self.get_provider(2)) == 0:
+    #         return False
+    #     return True
     
     def bandwidth(self, type):
-        '''get bandwidth occupation
-        input the microservice type number
-        0: computation
-        1: application files (meta OS)
-        2: environment (image fetching)
-        
-        uplink and downlink are calculated together
-        '''
-        # TODO:  need checking & modifying
         return 0
     
     def set_QoS_weight(self, start_delay=1, service_latency=1, speed=-1, jilter=1, lifetime=-1, storage=-1, computation=-1):
@@ -81,20 +84,11 @@ class Task(object):
         
         self.qos = [start_delay, service_latency, speed, jilter, lifetime, storage, computation]
     
-    def reset(self):
-        self.app = ApplicationList.get_arbitrary_data(self.type)
-        self.providers = [-1, -1, []]
-        self.life_time = self.span  # the rest time slot it can survive on the cloud
-    
-    def step(self):
-        self.life_time -= 1
-        if self.life_time < 0:
-            raise TimeoutError(f"The task {self.id} is out of date, but nobody deals with it!")
-    
     def set_provider(self, microservice_type, provider_id):
         if 0 <= microservice_type < 2:
             self.providers[microservice_type] = provider_id
         elif microservice_type == 2:
+            # the index related to missing_layer
             self.providers[2].append(provider_id)
         else:
             raise ValueError(f"Input microservice_type {microservice_type} is out of range!")
@@ -108,6 +102,11 @@ class Task(object):
         else:
             raise ValueError(f"Input microservice_type {microservice_type} is out of range!")
 
+    def source_workers(self, image_id=-1, index=-1):
+        if index == -1:
+            index = self.missing_layers.index(image_id)
+        return self.providers[2][index]
+    
 class ProcessTask(Task):
     def __init__(self,  user_id=-1):
         cpu = max(20 + 3 * np.random.randn(1)[0], 0.)       # 11 ~ 29
@@ -146,6 +145,14 @@ class DesktopTask(Task):
         self.bw = max(100 + 30 * np.random.randn(1)[0], 0.)/8       # (10 ~ 190)/8
     
     def bandwidth(self, type):
+        '''get bandwidth occupation
+        input the microservice type number
+        0: computation
+        1: application files (meta OS)
+        2: environment (image fetching)
+        
+        uplink and downlink are calculated together
+        '''
         # bandwidth here only used to indicate the occupation of this slot
         if type == 0:
             return self.bw
@@ -154,5 +161,5 @@ class DesktopTask(Task):
             return 1.
         elif type == 2:
             # TODO: deprecate it!
-            return super().bandwidth(2)
+            return 0.
         

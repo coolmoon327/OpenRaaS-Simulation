@@ -1,19 +1,42 @@
 import numpy as np
 from .device import *
 
+
+# class linkload(object):
+#     def __init__(self, task_id, start, interval):
+#         """A transmission load on the link
+
+#         Args:
+#             task (Task): transmitted task
+#             start (float): ms
+#             interval (float): ms
+#         """
+#         self.task_id = task_id
+#         self.start = start
+#         self.interval = interval
+        
+#     def end(self):
+#         return self.start + self.interval
+
+
 class Line(object):
     def __init__(self, bandwidth, latency, jilter):
         self.bandwidth = bandwidth  # MBps
         self.latency = latency      # ms
         self.jilter = jilter        # mean jilter times in a slot
         
-        self.occupied_time = 0.     # the fully occupied time interval in this slot
-        # in each slot, first serve those tasks with long span, and then using all bandwidth for data transfer tasks one by one
-        # but we do not care about the left bandwidth (4-3-5, left 1-0-2) for easy 
+        self.occupied_time = 0.
+        # self.loads = []
 
     def get_jilter(self):
-        ans = max(self.jilter + self.jilter/3 * np.random.randn(1)[0], 0.)  # 0 ~ 2 mean_jilter
+        ans = round(max(self.jilter + self.jilter/3 * np.random.randn(1)[0], 0.))  # 0 ~ 2 mean_jilter
         return ans
+    
+    # def occupied_time(self):
+    #     # the fully occupied time interval in this slot
+    #     # in each slot, firstly serve long-span tasks, and then using all bandwidth to transmit other tasks one by one
+    #     # but we do not care about the left bandwidth (4-3-5, left 1-0-2) for easy 
+    #     return self.loads[-1].end()
 
 class Area(object):
     def __init__(self, id):
@@ -25,11 +48,20 @@ class Area(object):
     def reset(self):
         self.devices.clear()
         self.lines.clear()
+
+        for line in self.lines:
+            # line.loads.clear()
+            line.occupied_time = 0.
         
         bw = max(300 + 100 * np.random.randn(1)[0], 1.)*1000/8 # (1 ~ 500)/8 GBps
         l = max(10 + 3 * np.random.randn(1)[0], 1.) # 1 ~ 19 ms
         j = max(5 + 1 * np.random.randn(1)[0], 0) # 2 ~ 8
         self.backbone = Line(bw, l, j)
+
+    def step(self):
+        for line in self.lines:
+            # line.loads.clear()
+            line.occupied_time = 0.
 
     def add_device(self, type: int, device_id: int, bandwidth=0):
         """
@@ -65,6 +97,10 @@ class Topology(object):
         for area in self.areas:
             area.reset()
     
+    def step(self):
+        for area in self.areas:
+            area.step()
+    
     def get_area_by_device_id(self, device_id: int):
         return self.areas[self.device_to_area[device_id]]
     
@@ -84,46 +120,6 @@ class Topology(object):
         type = 0 if device.print_type() == 'server' else 1
         self.areas[area_id].add_device(type, device.id, device.bw)
         self.device_to_area[device.id] = area_id
-    
-    def transmit_between_devices(self, device1: Device, device2: Device, datasize):
-        """update the bandwidth occupation
-
-        Args:
-            device1 (Device): device 1
-            device2 (Device): device 2
-            datasize (float): size of the transmitted file (MB)
-        
-        Returns:
-            speed: minimum bandwith on the link
-            latency: total latency
-            jilter: total sampledd jilters
-        
-        """
-        if datasize == 0 or device1 == device2:
-            return
-        
-        a1 = self.get_area_by_device_id(device1.id)
-        a2 = self.get_area_by_device_id(device2.id)
-        i1 = self.get_device_interface_link_by_id(device1.id)
-        i2 = self.get_device_interface_link_by_id(device2.id)
-        
-        if i1.bandwidth != device1.bw or i2.bandwidth != device2.bw:
-            raise ValueError(f"The link bandwidth is not equal to the interface's.")
-        
-        i1.bandwidth -= datasize
-        i2.bandwidth -= datasize
-        device1.bw = i1.bandwidth
-        device2.bw = i2.bandwidth
-        
-        if a1 != a2:
-            a1.backbone.bandwidth -= datasize
-            a2.backbone.bandwidth -= datasize
-
-        if i1.bandwidth < 0 or i2.bandwidth < 0 or a1.backbone.bandwidth < 0 or a2.backbone.bandwidth < 0:
-            raise ValueError(f"Negative bandwidth.")
-        
-    def release_between_devices(self, device1: Device, device2: Device, datasize):
-        return self.transmit_between_devices(device1, device2, -datasize)
     
     def get_link_states_between_devices_by_id(self, d1: int, d2: int):
         """get link states between d1 and d2
@@ -157,20 +153,106 @@ class Topology(object):
     def get_link_states_between_devices(self, device1: Device, device2: Device):
         return self.get_link_states_between_devices_by_id(device1.id, device2.id)
     
-    def cal_transmit_delay_between_devices_by_id(self, d1: int, d2: int, datasize):
-        """Calculate the transmition delay of the file bewteen two devices
+    # def cal_transmit_delay_between_devices_by_id(self, d1: int, d2: int, datasize):
+    #     """Calculate the transmition delay of the file bewteen two devices
+
+    #     Args:
+    #         d1 (int): device 1 id
+    #         d2 (int): device 2 id
+    #         datasize (float): size of the transmitted file (MB)
+    #     """
+    #     speed, _, _ = self.get_link_states_between_devices_by_id(d1, d2)
+    #     ans = datasize / speed * 1000 # ms
+    #     return ans
+    
+    # def cal_transmit_delay_between_devices(self, device1: Device, device2: Device, datasize):
+    #     return self.cal_transmit_delay_between_devices_by_id(device1.id, device2.id, datasize)
+    
+    def occupy_bandwidth_between_devices(self, device1: Device, device2: Device, bw):
+        """update the bandwidth occupation
 
         Args:
-            d1 (int): device 1 id
-            d2 (int): device 2 id
-            datasize (float): size of the transmitted file (MB)
+            device1 (Device): device 1
+            device2 (Device): device 2
+            bw (float): long-term occupied bandwidth (MB)
         """
-        speed, _, _ = self.get_link_states_between_devices_by_id(d1, d2)
-        ans = datasize / speed * 1000 # ms
+        if bw == 0. or device1 == device2:
+            return
+        a1 = self.get_area_by_device_id(device1.id)
+        a2 = self.get_area_by_device_id(device2.id)
+        i1 = self.get_device_interface_link_by_id(device1.id)
+        i2 = self.get_device_interface_link_by_id(device2.id)
+        if i1.bandwidth != device1.bw or i2.bandwidth != device2.bw:
+            raise ValueError(f"The link bandwidth is not equal to the interface's.")
+        
+        i1.bandwidth -= bw
+        i2.bandwidth -= bw
+        device1.bw = i1.bandwidth
+        device2.bw = i2.bandwidth
+        
+        if a1 != a2:
+            a1.backbone.bandwidth -= bw
+            a2.backbone.bandwidth -= bw
+
+        if i1.bandwidth < 0 or i2.bandwidth < 0 or a1.backbone.bandwidth < 0 or a2.backbone.bandwidth < 0:
+            raise ValueError(f"Negative bandwidth.")
+        
+    def release_bandwidth_between_devices(self, device1: Device, device2: Device, bw):
+        return self.occupy_bandwidth_between_devices(device1, device2, -bw)
+    
+    def transmit_task_between_devices(self, device1: Device, device2: Device, datasize, min_startup_time=0.):
+        """update the occupated time
+        auto released when stepping because only temporary transmissions use the occupied_time property
+
+        Args:
+            device1 (Device): device 1
+            device2 (Device): device 2
+            datasize (float): temporarily transmitted file size
+            min_startup_time (default=0.): the specified minimize transmission begin time, used to transmit a file after initializing the compute worker (fetch images)
+        
+        Returns:
+            end_time (float): the transmission latency after the begin of this slot (ms)
+        """
+        if device1 == device2:
+            return
+        a1 = self.get_area_by_device_id(device1.id)
+        a2 = self.get_area_by_device_id(device2.id)
+        i1 = self.get_device_interface_link_by_id(device1.id)
+        i2 = self.get_device_interface_link_by_id(device2.id)
+        
+        # calculate end_time
+        begin_time = max(self.get_link_occupied_time(device1, device2), min_startup_time)
+        duration = self.cal_transmission_duration(device1, device2, datasize)
+        end_time = begin_time + duration
+        
+        # update link states
+        i1.occupied_time = end_time
+        i2.occupied_time = end_time
+        if a1 != a2:
+            a1.backbone.occupied_time = end_time
+            a2.backbone.occupied_time = end_time
+        
+        return end_time    
+    
+    def get_link_occupied_time(self, device1: Device, device2: Device):
+        a1 = self.get_area_by_device_id(device1.id)
+        a2 = self.get_area_by_device_id(device2.id)
+        i1 = self.get_device_interface_link_by_id(device1.id)
+        i2 = self.get_device_interface_link_by_id(device2.id)
+        
+        ans = min(i1.occupied_time, i2.occupied_time)
+        
+        if ans and a1 != a2:
+            ans = min(ans, a1.backbone.occupied_time)
+            ans = min(ans, a2.backbone.occupied_time)
+        
         return ans
     
-    def cal_transmit_delay_between_devices(self, device1: Device, device2: Device, datasize):
-        return self.cal_transmit_delay_between_devices_by_id(device1.id, device2.id, datasize)
+    def cal_transmission_duration(self, device1: Device, device2: Device, datasize):
+        # only calculation, no application
+        speed, _, _ = self.get_link_states_between_devices_by_id(device1.id, device2.id)
+        duration = datasize / speed * 1000 # ms
+        return duration
     
     def check_areas(self):
         device_num = 0
