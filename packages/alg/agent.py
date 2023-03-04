@@ -38,48 +38,32 @@ class SimulationAgent(object):
                 candidates_num = config['candidates_num']
                 
                 # 1. modify state
-                num = state.__len__()
-                tasks_info = []         # (num, task_info_num)
-                compute_info = []       # (num, 2)
-                all_cand_num = []       # (num, 1)
-                top_cand_info = []      # (num, candidates_num, filestore_info_num)
-                true_candidates_num = [candidates_num for _ in range(num)]
+                self.temp_point = 0
+                tasks_info = get_state_clip(state, task_info_num)
+                compute_info = get_state_clip(state, 2)
+                all_cand_num = get_state_clip(state, 1)
+                candidates = get_state_clip(state, filestore_info_num * candidates_num)
                 
-                for n in range(num):
-                    self.temp_point = 0
-                    tasks_info.append(get_state_clip(state[n], task_info_num))
-                    compute_info.append(get_state_clip(state[n], 2))
-                    all_cand_num.append(get_state_clip(state[n], 1))
-                    candidates = get_state_clip(state[n], filestore_info_num * candidates_num)
-                    sepeated_cand_info = []
-                    for i in range(candidates_num):
-                        info = candidates[i * filestore_info_num : (i+1) * filestore_info_num]
-                        if np.sum(info) == -3.:
-                            true_candidates_num[n] = i
-                            break
-                        sepeated_cand_info.append(info)
-                    top_cand_info.append(sepeated_cand_info)
+                real_candidates_num = candidates_num
+                arranged_candidates_info = []      # (candidates_num, filestore_info_num)
+                for i in range(candidates_num):
+                    info = candidates[i * filestore_info_num : (i+1) * filestore_info_num]
+                    if np.sum(info) == -3.:
+                        real_candidates_num = i
+                        break
+                    arranged_candidates_info.append(info)
                 
-                # tasks_info = np.array(tasks_info)
-                # compute_info = np.array(compute_info)
-                # all_cand_num = np.array(all_cand_num)
-                # top_cand_info = np.array(top_cand_info)
                 
                 # 2. gain action
-                actions = []
-                for i in range(num):
-                    if compute_info[i][0] == -1. or true_candidates_num[i] == 0:
-                        actions.append(-1)
-                        continue
-                    bws = [top_cand_info[i][j][0] for j in range(true_candidates_num[i])]
-                    ls = [top_cand_info[i][j][1] for j in range(true_candidates_num[i])]
-                    js = [top_cand_info[i][j][2] for j in range(true_candidates_num[i])]
-                    a = self.alg.get_action(compute_info[i][1], bws, ls, js)
-                    actions.append(a)
-            
-                actions = np.array(actions)
+                action = -1
+                if compute_info[0] != -1. and real_candidates_num:
+                    bws = [arranged_candidates_info[j][0] for j in range(real_candidates_num)]
+                    ls = [arranged_candidates_info[j][1] for j in range(real_candidates_num)]
+                    js = [arranged_candidates_info[j][2] for j in range(real_candidates_num)]
+                    action = self.alg.get_action(compute_info[1], bws, ls, js)
                 
                 # 3. go into next step
-                state, reward, _ = env.step(actions)
+                state, reward, _ = env.step(action)
                 
-                print(f"E{episode}S{step}: reward={np.mean(reward)}")
+                # if step % 100 == 0:
+                #     print(f"E{episode}S{step}: reward={reward}")

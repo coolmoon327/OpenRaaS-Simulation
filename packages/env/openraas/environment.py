@@ -1,4 +1,5 @@
-from distutils.command.clean import clean
+# alpha v0.2
+
 import numpy as np
 from .device import *
 from .app import *
@@ -9,6 +10,7 @@ from gym import spaces
 class Environment(object):
     def __init__(self, config={}):
         self.devices: list[Device] = []       # first M devices are servers -> self.devices[0:M]
+        self.workers: list[Device] = []
         # scheduled_tasks stores tasks delivered to workers (in execution ones), while new_tasks stores just generated ones in this slot
         # these two taks lists cannot store any tasks in common or out-of-lifetime ones
         self.scheduled_tasks: list[Task] = []
@@ -17,10 +19,6 @@ class Environment(object):
     
         if len(config):
             self.load_config(config)
-        
-        # logs
-        self.rewards = []
-        self.served_percent = 0.
     
     def load_config(self, config):
         self.config = config
@@ -34,52 +32,32 @@ class Environment(object):
             self.topology = Topology(config['area_num'])
         except:
             raise KeyError("Cannot find environment keys in config dict.")
+        
+        self.state_len = self.task_info_num+2+1+self.candidates_num*self.filestore_info_num
         self.generate_topology()
         self.reset()
-        self.reload_env_info()
     
     def reset(self):
         self.scheduled_tasks.clear()
         self.new_tasks.clear()
         self.fs_candidates.clear()
         
+        self.task_index = 0
+        
         for device in self.devices:
             device.reset()
         
-        # self.topology.reset()
-        # self.generate_topology()
+        self.topology.reset()
+        
         self.next()
         state = self.get_state()
+        while self.new_tasks[self.task_index].dropped:
+            self.task_index += 1
+            state = self.get_state()
         return state
     
     def seed(self, seed):
-        # env.seed(seed) # env config
         np.random.seed(seed)
-        # random.seed(seed)
-        # torch.manual_seed(seed) # config for CPU
-        # torch.cuda.manual_seed(seed) # config for GPU
-        # os.environ['PYTHONHASHSEED'] = str(seed) # config for python scripts
-        # # config for cudnn
-        # torch.backends.cudnn.deterministic = True
-        # torch.backends.cudnn.benchmark = False
-        # torch.backends.cudnn.enabled = False
-    
-    def reload_env_info(self, tasks_num=1):
-        # State Design
-        self.n_actions = tasks_num  # tasks number per step
-        # self.observation_space = spaces.Tuple([spaces.Box(-1000., 1000., (1, self.task_info_num)),     
-        #                                         # 1. tasks information
-        #                                         spaces.Discrete(self.compute_type_num), spaces.Box(-1000., 1000., (1, 1)),           
-        #                                         # 2. compute worker information: type (estimated by the global master), interface bandwidth
-        #                                         spaces.Discrete(self.M+self.N),                
-        #                                         # 3. total filestore candidates number
-        #                                         spaces.Box(-1000., 1000., (1, self.filestore_info_num)) for _ in range(self.candidates_num))
-        #                                         # 4. information of the top candidates_num priorities
-        #                                        for __ in range(self.n_actions])    # (n_actions, ?)
-        
-        # Action Design: the selected index of given 10 filestores (for n_actions tasks)
-        # Each step may change the n_actions (because the tasks number is dynamic in different slots), so dislike other envs, engine should check the space per step
-        self.action_space = spaces.Tuple([spaces.Discrete(self.candidates_num) for _ in range(self.n_actions)]) # (n_actions)
     
     def generate_topology(self):
         # In a RL game, maybe we should not reset the topology so that the agent can learn more potential details in its neu-network
@@ -92,12 +70,17 @@ class Environment(object):
         
         M, N = self.M, self.N
         
+        self.devices.clear()
+        self.workers.clear()
+        self.topology.clear()
+        
         # generate devices
         self.devices.clear()
         for i in range(M):
             device = Server(i)
             self.devices.append(device)
             self.topology.add_device(device)
+            self.workers.append(device) # all servers are workers
         for j in range(N):
             i = self.M + j
             r = np.random.rand(0,3)
@@ -109,11 +92,17 @@ class Environment(object):
                 device = IoTDevice(i)
             self.devices.append(device)
             self.topology.add_device(device)
+            if device.is_worker:
+                self.workers.append(device)
 
         self.topology.check_areas() # debug
         
         # distribute layers & applications
-        storage_app = ApplicationList.get_list(1)[0]    # every worker has this 0 size app
+        
+        # 0. everyone can serve as the storage filestore
+        storage_app = ApplicationList.get_list(1)[0]
+        for device in self.workers:
+            device.store_data(storage_app)
         
         # 1. at least one server storing this data
         List = LayerList
@@ -122,57 +111,53 @@ class Environment(object):
                 l = List.get_list(type)
                 for data in l:
                     if storage_app == data:
-                        for device in self.devices:
-                            if device.is_worker:
-                                device.store_data(data)
                         continue
                         
                     ori = np.random.randint(0, M)
                     index = ori
-                    while (not self.devices[index].is_worker) or (not self.devices[index].is_enough_for_storing(data)):
+                    while not self.workers[index].is_enough_for_storing(data):
                         index = index+1 if index < M-1 else 0
                         if index == ori:
                             # all M servers cannot store it, set error flag
                             raise ValueError(f"Data with id {data.id} cannot be stored in any a server!")
-                    
                     self.devices[index].store_data(data)    # host_id is appended in this method. if not, check it
             List = ApplicationList
             
-        # 2. every device has a chance to store some arbitrary data
-        for device in self.devices:
-            if not device.is_worker:
-                continue
-            
-            # now use is_worker flag to indicate the chance
-            # # a) chance
-            # r1 = np.random.randint(0, 10)
-            # if r1 > 3:   # 20%
-            #     continue
-            
-            # b) layer 80% or app 20%
-            r2 = np.random.randint(0, 4)
-            for _ in range(2):
-                if r2 == 0:
-                    List = ApplicationList
-                else:
-                    List = LayerList
-                # c) data
-                data = List.get_arbitrary_data()
-                ori = data.id
-                avai_flag = True
-                while (device.id in data.hosts) or (not device.is_enough_for_storing(data)):
-                    data = List.get_next_data(data)
-                    if data.id == ori:
-                        avai_flag = False
-                        break
-                if avai_flag:
-                    device.store_data(data)
-                    break   # success, jump out of the loop
-                
-                r2 = not r2
+        # 2. every worker has the chance to store some arbitrary data
+        for device in self.workers:
+            # a) average 3 data in a client worker
+            data_num = np.random.randint(1, 5)  
+            for _ in range(data_num):
+                # b) layer 80% or app 20%
+                r2 = np.random.randint(0, 4)
+                for _ in range(2):
+                    if r2 == 0:
+                        List = ApplicationList
+                    else:
+                        List = LayerList
+                    # c) data
+                    data = List.get_arbitrary_data()
+                    ori = data.id
+                    avai_flag = True
+                    while (device.id in data.hosts) or (not device.is_enough_for_storing(data)):
+                        data = List.get_next_data(data)
+                        if data.id == ori:
+                            avai_flag = False
+                            break
+                    if avai_flag:
+                        device.store_data(data)
+                        break   # success, jump out of the loop
+                    
+                    r2 = not r2
     
     def next(self):
         M, N = self.M, self.N
+        
+        for device in self.workers:
+        # severely influence the performance, comment it after finishing debugging!!!
+            err = device.check_error()
+            if err != 0:
+                raise ValueError(f"Error with tag {err} occurs in device {device.id}.")
         
         # 1. clear instant cache of the last slot
         self.new_tasks.clear() 
@@ -204,167 +189,127 @@ class Environment(object):
                 client.req_tasks.remove(task)
                 
                 for d in depositories:
-                    depository = self.devices[d]
-                    # if task.type == 2:
-                    #     self.topology.release_bandwidth_between_devices(compute, depository, task.bandwidth(2))
-                    depository.release_task(2, task)
+                    self.devices[d].release_task(2, task)
                 
         for task in removed_tasks:
             self.scheduled_tasks.remove(task)
         
         # 4. collect new tasks from client devices
         for j in range(N):
-            i = self.M + j
+            i = M + j
             self.new_tasks += self.devices[i].new_tasks
+        
+        self.tasks_num = len(self.new_tasks)
+        self.task_index = 0
+        self.served_num = 0
             
     def get_state(self):
-        """
-        Returns:
-            state (np.array)
-        """
-        for device in self.devices:
-            device.preoccupied_resource = [0., 0., 0.]
-        state = []
-        for task in self.new_tasks:
-            # 4.1 find the closest devices as compute candidates
-            client = self.devices[task.user_id]
-            dropped = task.bandwidth(0) > client.bw - client.preoccupied_resource[2]
-            
-            if not dropped:
-                minn = 1e6
-                target_c = -1
-                for device in self.devices:
-                    if not device.is_worker or device.id == task.user_id or (not device.check_task_availability(0, task)):
-                        continue
-                    _, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
-                    if l < minn:
-                        minn = l
-                        target_c = device.id
-                if target_c == -1:
-                    dropped = True
-            
-            if dropped:
-                state.append([-1. for _ in range(self.task_info_num+2+1+self.candidates_num*self.filestore_info_num)])
-                self.fs_candidates.append([])
-                task.dropped = True
-                continue
-            
-            compute = self.devices[target_c]
-            task.set_provider(0, target_c)
-            task.missing_layers = self.devices[target_c].find_missing_layers(task)
-            
-            compute.preoccupied_resource[0] += task.cpu
-            if task.type != 1:
-                compute.preoccupied_resource[1] += task.mem
-            compute.preoccupied_resource[2] += task.bandwidth(0) + task.bandwidth(1)
-            client.preoccupied_resource[2] += task.bandwidth(0) # client
-            
-            # 4.2 find devices with the target application as filestore candidates (return 10 candidates)
-            # 4.2.1 finds all available devices
-            avail_fs = []
-            for fs_id in task.app.hosts:
-                if self.devices[fs_id].check_task_availability(1, task):
-                    avail_fs.append(fs_id)
-            # 4.2.2 calculate their priorities
-            # TODO: temporally use the interface latency to sort, modify it in need
-            dict_p = {}
-            for fs_id in avail_fs:
-                line = self.topology.get_device_interface_link_by_id(fs_id)
-                dict_p[fs_id] = line.bandwidth
-                # every device is pre-allocated
-                self.devices[fs_id].preoccupied_resource[2] += task.bandwidth(1)
-                if task.type == 1:
-                    self.devices[fs_id].preoccupied_resource[1] += task.mem
-            
-            # 4.2.3 sort by priority and take the first 10 devices
-            dict_p = dict(sorted(dict_p.items(), key=lambda item: -item[1]))
-            all_candidates_num = len(avail_fs)
-            prior_candidates = list(dict_p.keys()) if all_candidates_num < 10 else list(dict_p.keys())[:10]
-            self.fs_candidates.append(prior_candidates)
-            
-            # 4.3 find devicces with the target layers as depository candidates
-            # depository workers have two ways to choose: 1. all candidates 2. a target worker
-            # if use the first one, we should modify the provider method of Task class
-            compute_link = self.topology.get_device_interface_link_by_id(compute.id)
-            for layer_id in task.missing_layers:
-                layer = LayerList.get_data_by_id(layer_id)
-                # if len(layer.hosts) == 0:
-                #     # cannot execute this task because of layer lacking, dropping in the service compostion step
-                #     depositories = []
-                #     break
-                min_estimated_time = 1e6
-                target_d = -1
-                for d_id in layer.hosts:
-                    # TODO: change to choose only one depository for each missing layer!
-                    # if d_id not in task.get_provider(2) and self.devices[d_id].check_task_availability(2, task):
-                    #     task.set_provider(2, d_id)
-                    #     # every device is pre-allocated
-                    #     self.devices[d_id].preoccupied_resource[2] += task.bandwidth(2)
-                    #     compute.preoccupied_resource[2] += task.bandwidth(2)
-                    device = self.devices[d_id]
-                    if layer_id in device.layers:
-                        link = self.topology.get_device_interface_link_by_id(device.id)
-                        estimated_time = link.occupied_time + layer.size / min(link.bandwidth, compute_link.bandwidth)
-                        if estimated_time < min_estimated_time:
-                            target_d = d_id
-                            min_estimated_time = estimated_time
-                if target_d != -1:
-                    task.set_provider(2, target_d)
-                else:
-                    # cannot execute this task because of layer lacking
-                    task.dropped = True
-                    break
-            
-            # 4.4 arrange the observation
-            # task_info = [task.cpu, task.mem, task.span]
-            task_info = [task.u_0(), task.qos[1], task.qos[2], task.qos[3]] # the scheduler only decides which filestore to be chosen, so only delay, speed, and jilter influence
-                                                                            # it also decides whether droping this task
-            worker_info = [self.devices[target_c].worker_type, self.topology.get_device_interface_link_by_id(target_c).bandwidth]
-            candidates_info = [all_candidates_num]
-            for fs_id in prior_candidates:
-                interface = self.topology.get_device_interface_link_by_id(fs_id)
-                candidates_info += [interface.bandwidth, interface.latency, interface.jilter]
-            # padding
-            i = all_candidates_num
-            while i < self.candidates_num:
-                i+=1
-                candidates_info += [-1., -1., -1.]
-            
-            if len(candidates_info) != 1 + self.candidates_num * self.filestore_info_num:
-                raise ValueError(f"Candidates information number {len(candidates_info)} of task {task.id} does not equal to {1 + self.candidates_num * self.filestore_info_num}")
-            
-            state.append(task_info+worker_info+candidates_info)
-            task.dropped = False
+        def dropped_state(task):
+            task.dropped = True
+            return [-1. for _ in range(self.state_len)]
+        self.fs_candidates = []
+        task = self.new_tasks[self.task_index]
+        client = self.devices[task.user_id]
         
-        self.state = np.array(state)
+        # 4.1 find the closest worker as compute candidates
+        target_c = -1
+        if task.bandwidth(0) <= client.bw:
+            minn = 1e6
+            for device in self.workers:
+                if device.id == task.user_id or (not device.check_task_availability(0, task)):
+                    continue
+                s, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
+                total_latency = l + task.mem / (s+1e6) * 1000.
+                if total_latency < minn:
+                    minn = total_latency
+                    target_c = device.id
         
-        return self.state
+        if target_c == -1:
+            # print(f"Task require cpu={task.cpu} mem={task.mem} bw={task.bw if task.type==2 else None}, while max_cpu={np.max([worker.cpu if not worker.isMobile and worker.isOpen else 0. for worker in self.workers])} ") #max_mem={np.max([worker.mem for worker in self.workers])} max_bw={np.max([i.bw for worker in self.workers])}")
+            return dropped_state(task)
+        
+        compute = self.devices[target_c]
+        task.set_provider(0, target_c)
+        task.missing_layers = compute.find_missing_layers(task)
+        
+        # 4.2 find devices with the target application as filestore candidates (return 10 candidates)
+        # 4.2.1 finds all available devices
+        avail_fs = []
+        for fs_id in task.app.hosts:
+            if self.devices[fs_id].check_task_availability(1, task):
+                avail_fs.append(fs_id)
+        
+        # 4.2.2 calculate their priorities
+        dict_p = {}
+        for fs_id in avail_fs:
+            line = self.topology.get_device_interface_link_by_id(fs_id)
+            dict_p[fs_id] = line.bandwidth
+        
+        # 4.2.3 sort by priority and take the first 10 devices
+        dict_p = dict(sorted(dict_p.items(), key=lambda item: -item[1]))
+        self.fs_candidates = list(dict_p.keys()) if len(avail_fs) < 10 else list(dict_p.keys())[:10]
+        
+        # 4.3 find devicces with the target layers as depository candidates
+        compute_link = self.topology.get_device_interface_link(compute)
+        for layer_id in task.missing_layers:
+            layer = LayerList.get_data_by_id(layer_id)
+            min_estimated_time = 1e6
+            target_d = -1
+            for d_id in layer.hosts:
+                if layer_id in self.devices[d_id].layers:
+                    link = self.topology.get_device_interface_link_by_id(d_id)
+                    estimated_time = link.occupied_time + layer.size / (min(link.bandwidth, compute_link.bandwidth)+1e6) * 1000
+                    if estimated_time < min_estimated_time:
+                        target_d = d_id
+                        min_estimated_time = estimated_time
+            
+            task.set_provider(2, target_d)
+            
+            if target_d == -1:
+                return dropped_state(task)
+        
+        # 4.4 arrange the observation
+        task_info = [task.u_0(), task.qos[1], task.qos[2], task.qos[3]] # the scheduler only decides which filestore to choose, which is only influenced by delay, speed, and jilter
+                                                                        # it also decides whether droping this task
+        worker_info = [compute.worker_type, self.topology.get_device_interface_link(compute).bandwidth]
+        candidates_info = [len(self.fs_candidates)]
+        for fs_id in self.fs_candidates:
+            interface = self.topology.get_device_interface_link_by_id(fs_id)
+            candidates_info += [interface.bandwidth, interface.latency, interface.jilter]
+        
+        # padding
+        i = len(self.fs_candidates)
+        while i < self.candidates_num:
+            i+=1
+            candidates_info += [-1., -1., -1.]
+        
+        if len(candidates_info) != 1 + self.candidates_num * self.filestore_info_num:
+            raise ValueError(f"Candidates information number {len(candidates_info)} of task {task.id} does not equal to {1 + self.candidates_num * self.filestore_info_num}")
+        
+        task.dropped = False
+        state = np.array(task_info+worker_info+candidates_info)
+        
+        return state
     
     def step(self, action):
-        if len(action) != len(self.new_tasks):
-            raise ValueError(f"Action_space with length {len(action)} does not equal to the tasks number {len(self.new_tasks)}!")
-        
         # 1. execute service composition
-        self.served_num = 0
-        self.all_num = len(self.new_tasks)
-        self.rewards.clear()
-        for i in range(len(action)):
-            # print(i)
-            task = self.new_tasks[i]
-            
-            if not -1 <= action[i] < self.fs_candidates[i].__len__():
-                raise ValueError(f"Error action {action[i]} is larger than the candidates number {self.fs_candidates[i].__len__()}")
-            
-            if action[i] == -1 or task.dropped:
-                # this task cannot be composed
-                task.dropped = True
-                continue
-            
-            task.set_provider(1, self.fs_candidates[i][action[i]])
+
+        task = self.new_tasks[self.task_index]
+        
+        if not -1 <= action < len(self.fs_candidates):
+            raise ValueError(f"Error action {action} is larger than the candidates number {len(self.fs_candidates)}")
+        
+        if action == -1 or task.dropped:
+            # this task cannot be composed
+            task.dropped = True
+            reward = 0.
+        else:
+            fs_id = self.fs_candidates[action]
+            task.set_provider(1, fs_id)
             
             client = self.devices[task.user_id]
             compute = self.devices[task.get_provider(0)]
-            filestore = self.devices[task.get_provider(1)]
+            filestore = self.devices[fs_id]
             depositories = task.get_provider(2)
             
             # bidding
@@ -375,9 +320,6 @@ class Environment(object):
             for index in range(len(depositories)):
                 depository = self.devices[depositories[index]]
                 layer = LayerList.get_data_by_id(task.missing_layers[index])
-            # for d in depositories:
-                # cd_latency = max(cd_latency, self.topology.get_link_states_between_devices_by_id(compute.id, d)[1])
-                # startup latency
                 link_latency = self.topology.get_link_states_between_devices(compute, depository)[1]
                 begin_time = self.topology.get_link_occupied_time(compute, depository)
                 duration = self.topology.cal_transmission_duration(compute, depository, layer.size)
@@ -412,7 +354,7 @@ class Environment(object):
                 pass
             
             cost = c_price + fs_price + d_price
-            self.rewards.append(utility - cost)
+            reward = utility - cost
             
             # resource changes
             compute.allocate_tasks(0, task) # we should pre-allocate resource for C and D! and release it no matter whether we execute it or not
@@ -440,34 +382,18 @@ class Environment(object):
             self.scheduled_tasks.append(task)
             client.req_tasks.append(task)
             self.served_num += 1
-
-        self.served_percent = 1.*self.served_num/self.all_num
-
-        if self.rewards.__len__() == 0 and np.sum(action) != len(self.state) * -1.:
-            print("Wranning.")
         
-        for device in self.devices:
-            err = device.check_error()
-            if err != 0:
-                raise ValueError(f"Error with tag {err} occurs in device {device.id}.")
-
-        # 2. enter next step and gain new states
-        self.next()
-        
-        # 3. regenerate env info
-        self.reload_env_info(self.new_tasks.__len__())
-        
-        # 4. get state data
-        state = self.get_state()
-        
-        # 5. get rewards
-        # Problem: some task with long span cannot get instantaneous reward
-        # a) Maybe we should temporally store those state in a database until its reward generated? (X)
-        # a-1 self.scheduled_tasks
-        # a-2 states before those tasks
-        # a-3 states after those tasks (randomly choose a task state in next slot)
-        # a-4 reward
-        # b) Or we settle its bill by estimation instead of waiting to finish the task (O)
-        
-        
-        return state, self.rewards
+        # 2. get state data
+        is_dropped = True
+        new_slot = False
+        while is_dropped:
+            self.task_index += 1
+            # enter next step and gain new states
+            if self.task_index == self.tasks_num:
+                new_slot = True
+                self.next()
+            
+            state = self.get_state()
+            is_dropped = self.new_tasks[self.task_index].dropped
+            
+        return state, reward, new_slot

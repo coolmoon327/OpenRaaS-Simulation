@@ -27,10 +27,10 @@ class EnvWrapper:
             state (np.array)
         """
         # next_state, reward, terminal, _ = self.env.step(action.ravel())
-        next_state, reward = self.env.step(action)
-        terminal = 0
+        next_state, reward, next_slot = self.env.step(action)
         if self.config['get_statistics']:
-            self.statistic()
+            self.statistic(next_slot)
+        terminal = 0
         return next_state, reward, terminal
 
     def set_random_seed(self, seed):
@@ -54,18 +54,17 @@ class EnvWrapper:
     def normalise_reward(self, reward):
         return reward
     
-    def statistic(self):
+    def statistic(self, print_last_record=False):
+        if print_last_record:
+            print(f"Serverd percent: {self.served_percent}, average worker occupation: {self.ave_ocp}")
+            
         env = self.env
-        M = self.config['M']
 
-        served_percent = env.served_percent
+        self.served_percent = env.served_num / env.tasks_num
         
         occupation = [[],[],[]]
-        for device in env.devices:
-            if device.is_worker:
-                for i in range(3):
-                    occupation[i].append(device.idle_resource_occupation_rate(i))
+        for device in env.workers:
+            for i in range(3):
+                occupation[i].append(device.idle_resource_occupation_rate(i))
         
-        ave_ocp = [np.mean(occupation[0]), np.mean(occupation[1]), np.mean(occupation[2])]
-        
-        print(f"Serverd percent: {served_percent}, average worker occupation: {ave_ocp}")
+        self.ave_ocp = [np.mean(occupation[0]), np.mean(occupation[1]), np.mean(occupation[2])]

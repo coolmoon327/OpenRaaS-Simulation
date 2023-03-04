@@ -2,66 +2,50 @@ import numpy as np
 from .device import *
 
 
-# class linkload(object):
-#     def __init__(self, task_id, start, interval):
-#         """A transmission load on the link
-
-#         Args:
-#             task (Task): transmitted task
-#             start (float): ms
-#             interval (float): ms
-#         """
-#         self.task_id = task_id
-#         self.start = start
-#         self.interval = interval
-        
-#     def end(self):
-#         return self.start + self.interval
-
-
 class Line(object):
     def __init__(self, bandwidth, latency, jilter):
-        self.bandwidth = bandwidth  # MBps
-        self.latency = latency      # ms
-        self.jilter = jilter        # mean jilter times in a slot
-        
-        self.occupied_time = 0.
-        # self.loads = []
+        self.capacity = [bandwidth, latency, jilter]
+        self.reset()
 
     def get_jilter(self):
         ans = round(max(self.jilter + self.jilter/3 * np.random.randn(1)[0], 0.))  # 0 ~ 2 mean_jilter
         return ans
+
+    def reset(self):
+        self.bandwidth = self.capacity[0]       # MBps
+        self.latency = self.capacity[1]         # ms
+        self.jilter = self.capacity[2]          # mean jilter times in a slot
+        self.occupied_time = 0.
     
-    # def occupied_time(self):
-    #     # the fully occupied time interval in this slot
-    #     # in each slot, firstly serve long-span tasks, and then using all bandwidth to transmit other tasks one by one
-    #     # but we do not care about the left bandwidth (4-3-5, left 1-0-2) for easy 
-    #     return self.loads[-1].end()
+    def step(self):
+        self.occupied_time = 0.
+
 
 class Area(object):
     def __init__(self, id):
         self.id = id
         self.devices: list[int] = []    # devices' IDs
         self.lines: list[Line] = []     # devices' lines with respect to self.devices
-        self.reset()
-    
-    def reset(self):
-        self.devices.clear()
-        self.lines.clear()
-
-        for line in self.lines:
-            # line.loads.clear()
-            line.occupied_time = 0.
         
         bw = max(300 + 100 * np.random.randn(1)[0], 1.)*1000/8 # (1 ~ 500)/8 GBps
         l = max(10 + 3 * np.random.randn(1)[0], 1.) # 1 ~ 19 ms
         j = max(5 + 1 * np.random.randn(1)[0], 0) # 2 ~ 8
         self.backbone = Line(bw, l, j)
+    
+    def clear(self):
+        self.devices.clear()
+        self.lines.clear()
+        self.backbone.reset()
+    
+    def reset(self):
+        for line in self.lines:
+            line.reset()
+        self.backbone.reset()
 
     def step(self):
         for line in self.lines:
-            # line.loads.clear()
-            line.occupied_time = 0.
+            line.step()
+        self.backbone.step()
 
     def add_device(self, type: int, device_id: int, bandwidth=0):
         """
@@ -79,11 +63,6 @@ class Area(object):
         
         self.devices.append(device_id)
         self.lines.append(Line(bandwidth, l, j))
-        
-    def update_bandwidth(self, device_id: int, bandwidth):
-        """We should update bandwidth information once changed."""
-        i = self.devices.index(device_id)
-        self.lines[i].bandwidth = bandwidth
     
 
 class Topology(object):
@@ -92,7 +71,12 @@ class Topology(object):
         self.areas: list[Area] = [Area(i) for i in range(area_num)]
         self.device_to_area = {}    # key: device id, value: area id
         self.reset()
-        
+    
+    def clear(self):
+        for area in self.areas:
+            area.clear()
+        self.device_to_area.clear()
+    
     def reset(self):
         for area in self.areas:
             area.reset()
@@ -112,7 +96,7 @@ class Topology(object):
         return area.lines[area.devices.index(device_id)]
     
     def get_device_interface_link(self, device: Device):
-        self.get_device_interface_link_by_id(device.id)
+        return self.get_device_interface_link_by_id(device.id)
     
     def add_device(self, device: Device, area_id=-1):
         if area_id == -1:
@@ -183,7 +167,7 @@ class Topology(object):
         i1 = self.get_device_interface_link_by_id(device1.id)
         i2 = self.get_device_interface_link_by_id(device2.id)
         if i1.bandwidth != device1.bw or i2.bandwidth != device2.bw:
-            raise ValueError(f"The link bandwidth is not equal to the interface's.")
+            raise ValueError(f"The link bandwidth {i1.bandwidth} {i2.bandwidth} is not equal to the interface's {device1.bw} {device2.bw}.")
         
         i1.bandwidth -= bw
         i2.bandwidth -= bw
@@ -251,7 +235,7 @@ class Topology(object):
     def cal_transmission_duration(self, device1: Device, device2: Device, datasize):
         # only calculation, no application
         speed, _, _ = self.get_link_states_between_devices_by_id(device1.id, device2.id)
-        duration = datasize / speed * 1000 # ms
+        duration = datasize / (speed+1e6) * 1000 # ms
         return duration
     
     def check_areas(self):

@@ -1,7 +1,7 @@
 # Environment
 
-M: 10     # number of edge servers
-N: 3000   # number of edge devices
+M: 30     # number of edge servers
+N: 1000   # number of edge devices
 area_num: 10  # number of edge areas
 
 candidates_num: 10  # shown filestore candidates number per task
@@ -14,7 +14,7 @@ filestore_info_num: 3 # the properties number of a filestore worker
 
 batch_size: 512
 num_ep_train: 100 # number of episodes from all agents
-max_ep_length: 100 # maximum number of steps per episode
+max_ep_length: 10000 # maximum number of steps per episode
 
 # Miscellaneous
 

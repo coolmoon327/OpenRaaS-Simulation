@@ -30,24 +30,17 @@ class Device(object):
     
     def reset(self):
         # not reset layers & apps
-        self.inner_cpu= 0. # self.capacity[0] * min(1., max(0., (0.5 + 0.15 * np.random.randn(1)[0])))
+        self.inner_cpu= self.capacity[0] * min(1., max(0., (0.5 + 0.15 * np.random.randn(1)[0])))
         self.cpu = self.capacity[0] - self.inner_cpu   # Spare computation capability: GigaFlops
         self.mem = self.capacity[1]             # Storage space for OpenRaaS: MegaBytes
         self.bw = self.capacity[2]              # bandwidth: MegaBytes
                                                 # the remaining bandwidth only be considered in a desktop application scenario
                                                 # other services only occupy network links for several seconds, which should be taken as the startup delay
+        self.preoccupied_resource = [0., 0., 0.]
         
         self.cal_tasks.clear()
         self.metaos_tasks.clear()
         self.image_tasks.clear()
-    
-        List = ApplicationList
-        ids = self.apps
-        for _ in range(2):
-            for id in ids:
-                self.mem -= List.get_data_by_id(id).size
-            List = LayerList
-            ids = self.layers
     
     def step(self):
         '''step into next time slot'''
@@ -116,6 +109,32 @@ class Device(object):
                 ml.append(layer.id)
         return ml
     
+    # def refresh_layer_timers(self, layer=None, task=None):
+    #     if task:
+    #         for l in task.app.env_layers:
+    #             if l.id in self.layers:
+    #                 i = self.layers.index(l.id)
+    #                 self.timers[i] = self.default_timer
+    #     if layer:
+    #         # if layer.id in self.layers:
+    #         i = self.layers.index(layer.id)
+    #         self.timers[i] = self.default_timer
+    
+    # def push_layer(self, layer=None, layer_id=-1):
+    #     if layer_id == -1:
+    #         layer_id = layer.id
+    #     if layer_id not in self.layers:
+    #         raise ValueError(f"The layer {layer_id} does not exist in this device {self.id}.")
+    #     # self.refresh_layer_timers(layer=layer)
+    #     self.timers[self.layers.index(layer_id)] = self.default_timer
+        
+    #     # TODO: occupation calculation
+    #     # We use all depositories working in the P2P file-sharing mode, so everyone only spends a piece of bandwidth
+    #     # The details should be implemented in the environment.py
+    #     pass
+    
+    ### tasks execution
+    
     def get_tasks_set(self, microservice_type):
         if microservice_type == 0:
             return self.cal_tasks
@@ -126,31 +145,38 @@ class Device(object):
         else:
             raise ValueError(f"Input microservice_type {microservice_type} is out of range!")
     
-    def check_task_availability(self, microservice_type, task):
+    def check_task_availability(self, microservice_type, task, ignore_preoccupation=False):
         '''check whether the task can be executed in this device with microservice_type'''
+        if not ignore_preoccupation:
+            pbw = self.preoccupied_resource[2]
+            pcpu = self.preoccupied_resource[0]
+            pmem = self.preoccupied_resource[1]
+        else:
+            pbw, pcpu, pmem = 0., 0., 0.
+        
         ans = True
         
         BW = task.bandwidth(microservice_type)
         if microservice_type == 0:
             BW += task.bandwidth(1)
-        if BW > self.bw:
+        if BW > self.bw  - pbw:
             return False
         
         if microservice_type == 0:
-            if self.isMobile == True or self.isOpen == False or task.cpu > self.cpu:
+            if self.isMobile == True or self.isOpen == False or task.cpu > self.cpu  - pcpu or task.mem > self.mem  - pmem:
                 ans = False
             else:
                 # remain env space check
-                required_space = task.mem
+                required_env_space = 0.
                 for layer in task.app.env_layers:
                     if layer.id not in self.layers:
-                        required_space += layer.size
-                if required_space > self.mem:
+                        required_env_space += layer.size
+                if required_env_space > self.mem - pmem:
                     ans = False
         elif microservice_type == 1:
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
-                if self.isMobile == True or task.mem > self.mem:
+                if self.isMobile == True or task.mem > self.mem  - pmem:
                     ans = False
             # app check
             else:
@@ -177,7 +203,7 @@ class Device(object):
         2: the depository worker, and add the task into image_tasks
         '''
         tasks = self.get_tasks_set(microservice_type)
-        if not self.check_task_availability(microservice_type, task):
+        if not self.check_task_availability(microservice_type, task, ignore_preoccupation=True):
             raise ValueError(f"The task with id {task.id} cannot be handled by device {self.id} in microservice_type {microservice_type}")
         tasks.append(task)
         
@@ -202,8 +228,14 @@ class Device(object):
                 self.mem -= task.mem
 
         elif microservice_type == 2:
+            # push layers
+            # index = task.get_providers(2).index(self.id)
+            # layer_id = task.missing_layers[index]
             local_index = self.layers.index(layer_id)
             self.timers[local_index] = self.default_timer
+            # for layer_id in task.missing_layers:
+            #     if layer_id in self.layers:
+            #         self.push_layer(layer_id=layer_id)
     
     def release_task(self, microservice_type, task):
         '''release a target task from list
@@ -356,6 +388,26 @@ class Client(Device):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
         self.is_worker = True if np.random.randint(0, 10) < 0 else False    # 20% to be a worker
+        
+    # def set_requirement_type(self, type):
+    #     '''set requirement type
+    #     type=0: processing service (just like other computation offloading)
+    #     type=1: storage service
+    #     type=2: destop service
+        
+    #     TODO: add support for Internet APP (back-end simulation)
+    #     '''
+    #     self.req = type
+    
+    # def print_requirement_type(self):
+    #     if self.req == 0:
+    #         return 'processing'
+    #     elif self.req == 1:
+    #         return 'storage'
+    #     elif self.req == 2:
+    #         return 'destop'
+    #     elif self.req == 3:
+    #         return 'Internet'
     
     def generate_task(self, task_type=-1):
         if task_type == -1:
@@ -372,7 +424,8 @@ class Client(Device):
         elif task_type == 1:
             task = StorageTask(self.id)
         elif task_type == 2:
-            task = DesktopTask(self.id, self.bw)
+            task = DesktopTask(self.id)
+        self.preoccupied_resource[2] += task.bandwidth(0)
         self.new_tasks.append(task)
     
     def reset(self):
@@ -383,8 +436,8 @@ class Client(Device):
         super().step()
         # generate new tasks
         self.new_tasks.clear()
-        if np.random.randint(0,10) < 2:     # 20% chance to gain a new requirement
-            self.generate_task()
+        if np.random.randint(0,10) < 5:     # 50% chance to gain a new requirement
+            self.generate_task(1)
 
 
 class Desktop(Client):
@@ -392,7 +445,7 @@ class Desktop(Client):
         cpu = round(max(20 + 3 * np.random.randn(1)[0], 1.))      # 11 ~ 29
         mem = round(max(30e3 + 3e3 * np.random.randn(1)[0], 1.))  # 21e3 ~ 39e3
         bw = round(max(300 + 70 * np.random.randn(1)[0], 1.))/8   # (90 ~ 510)/8 MBps
-        isOpen = np.random.randint(0,10) < 9            # 90% devices are open
+        isOpen = np.random.randint(0,10) < 3            # 30% devices are open
         isMobile = False
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
     
@@ -405,7 +458,7 @@ class MobileDevice(Client):
         cpu = round(max(5 + 1 * np.random.randn(1)[0], 1.))       # 2 ~ 8
         mem = round(max(10e3 + 2e3 * np.random.randn(1)[0], 1.))  # 4e3 ~ 16e3
         bw = round(max(300 + 70 * np.random.randn(1)[0], 1.))/8   # (90 ~ 510)/8 MBps
-        isOpen = np.random.randint(0,10) < 3            # 30% devices are open
+        isOpen = False
         isMobile = True
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
     
@@ -418,8 +471,8 @@ class IoTDevice(Client):
         cpu = round(max(5 + 1 * np.random.randn(1)[0], 1.))       # 2 ~ 8
         mem = round(max(5e3 + 1e3 * np.random.randn(1)[0], 1.))   # 2e3 ~ 8e3
         bw = round(max(100 + 30 * np.random.randn(1)[0], 1.))/8   # (10 ~ 190)/8 MBps
-        isOpen = np.random.randint(0,10) < 9            # 90% devices are open
-        isMobile = np.random.randint(0,10) < 3          # 30% devices are mobile
+        isOpen = True
+        isMobile = np.random.randint(0,10) < 6          # 60% devices are mobile
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
     
     def print_type(self):

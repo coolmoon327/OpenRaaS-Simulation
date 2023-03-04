@@ -106,10 +106,12 @@ class Task(object):
         if index == -1:
             index = self.missing_layers.index(image_id)
         return self.providers[2][index]
-    
+
+# TODO: 修改 cpu 参数!!!
+
 class ProcessTask(Task):
     def __init__(self,  user_id=-1):
-        cpu = max(20 + 3 * np.random.randn(1)[0], 0.)       # 11 ~ 29
+        cpu = max(5 + 10 * np.random.randn(1)[0], .1)       # 5
         mem = 5 # max(5 + 1 * np.random.randn(1)[0], 0.)       # 2 ~ 8
         super().__init__(0, cpu, mem, user_id)
         self.set_QoS_weight()
@@ -123,26 +125,28 @@ class StorageTask(Task):
         '''
         span = round(max(20 + 5 * np.random.randn(1)[0], 1.))        # 5 ~ 35 time slots (2h ~ 8h) existing on the cloud drive
         # span = 1
-        file_num = int(max(7 + 2 * np.random.randn(1)[0], 1.))            # 1 ~ 13 files
+        file_num = int(max(20 + 5 * np.random.randn(1)[0], 1.))          # files
         mem = 0.
         for i in range(file_num):
-            mem += max(200 + 50 * np.random.randn(1)[0], 0.)       # 50 ~ 350 MB per file
+            mem += max(1000 + 300 * np.random.randn(1)[0], 100.)       # MB per file
         super().__init__(1, 0., mem, user_id, span)
         self.set_QoS_weight()
 
 
 class DesktopTask(Task):
-    def __init__(self, user_id=-1):
+    def __init__(self, user_id=-1, bandwidth_maximum=1e6):
         '''
         this task should give its lasting time span
         '''
-        cpu = max(10 + 3 * np.random.randn(1)[0], 0.)       # 1 ~ 19
-        span = round(max(3 + 1 * np.random.randn(1)[0], 1.))        # 1 ~ 6 time slots (30m ~ 3h) existing on the cloud drive
+        cpu = max(5 + 10 * np.random.randn(1)[0], 0.1)       # 5
+        span = round(max(1 + 3 * np.random.randn(1)[0], 1.))        # time slots existing on the cloud drive
         # span = 1
         super().__init__(2, cpu, 0., user_id, span)
         self.set_QoS_weight()
         
-        self.bw = max(100 + 30 * np.random.randn(1)[0], 0.)/8       # (10 ~ 190)/8
+        # self.bw = max(100 + 30 * np.random.randn(1)[0], 0.)/8       # (10 ~ 190)/8
+        # self.bw = min(self.bw, bandwidth_maximum)
+        self.bw = np.random.randint(1, max(2, min(100*100, int(bandwidth_maximum*100)))) / 100. / 8.
     
     def bandwidth(self, type):
         '''get bandwidth occupation
