@@ -13,11 +13,8 @@ def get_top_keys(keys, values):
     sorted_keys = list(dict_t.keys())
     
     top_num = 0
-    try:
-        top_value = values[sorted_keys[0]]
-    except:
-        raise ValueError(f"sorted_keys={sorted_keys}, values={values}")
-    while top_num<len(keys) and top_value == values[sorted_keys[top_num]]:
+    top_value = dict_t[sorted_keys[0]]
+    while top_num<len(keys) and top_value == dict_t[sorted_keys[top_num]]:
         top_num += 1
     
     return sorted_keys[:top_num]

@@ -96,7 +96,7 @@ class Environment(object):
         # distribute layers & applications
         
         storage_app = ApplicationList.get_list(1)[0]
-        if self.config['cloud_model'] == 0 or self.config['cloud_model'] == 2 or self.config['cloud_model'] == 4:
+        if "raas" in self.cloud_model_type():
             # 0. everyone can serve as the storage filestore
             for device in self.workers:
                 device.store_data(storage_app)
@@ -231,8 +231,16 @@ class Environment(object):
         target_c = -1
         if task.bandwidth(0) <= client.bw:
             minn = 1e6
-            for device in self.workers:
+            if "center" not in self.cloud_model_type() and self.config['compute_at_edge']:
+                edge = self.topology.get_area_by_device(client)
+                workers = [self.devices[did] for did in edge.devices]
+            else:
+                workers = self.workers  
+            for device in workers:
                 if device.id == task.user_id or (not device.check_task_availability(0, task)):
+                    continue
+                if "raas" not in self.cloud_model_type() and task.app.id not in device.apps:
+                    # the traditional models ask the compute worker to be the only provider
                     continue
                 s, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
                 total_latency = l + task.mem / (s+1e6) * 1000.
@@ -413,3 +421,16 @@ class Environment(object):
             is_dropped = self.new_tasks[self.task_index].dropped
             
         return state, reward, new_slot
+    
+    def cloud_model_type(self):
+        cm = self.config['cloud_model']
+        if cm == 0:
+            return "openraas"
+        elif cm == 1:
+            return "center"
+        elif cm == 2:
+            return "center raas"
+        elif cm == 3:
+            return "edge"
+        elif cm == 4:
+            return "edge raas"
