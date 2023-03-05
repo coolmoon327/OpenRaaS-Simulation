@@ -62,12 +62,6 @@ class Environment(object):
     def generate_topology(self):
         # In a RL game, maybe we should not reset the topology so that the agent can learn more potential details in its neu-network
         
-        # if want to simulate another cloud paradigm
-        # 1. cloud-centric: use an area as remote cloud, clients there won't require any task
-        # microservice composition is as usual but only executed in the remote cloud area
-        # 2. totally edge: only use edge servers to provide microservices
-        # before excution, the compute worker has to fetch application data instead of mounting them
-        
         M, N = self.M, self.N
         
         self.devices.clear()
@@ -76,10 +70,11 @@ class Environment(object):
         
         # generate devices
         self.devices.clear()
+        server_area_id = 0 if self.config['cloud_model'] == 1 or self.config['cloud_model'] == 2 else -1
         for i in range(M):
             device = Server(i)
             self.devices.append(device)
-            self.topology.add_device(device)
+            self.topology.add_device(device, server_area_id)
             self.workers.append(device) # all servers are workers
         for j in range(N):
             i = self.M + j
@@ -91,25 +86,24 @@ class Environment(object):
             else:
                 device = IoTDevice(i)
             self.devices.append(device)
-            self.topology.add_device(device)
-            if device.is_worker:
+            area_id = np.random.randint(1, self.topology.area_num) if server_area_id == -1 else -1
+            self.topology.add_device(device, area_id)
+            if self.config['cloud_model'] == 0 and device.is_worker:
                 self.workers.append(device)
 
         self.topology.check_areas() # debug
         
         # distribute layers & applications
         
-        # 0. everyone can serve as the storage filestore
         storage_app = ApplicationList.get_list(1)[0]
-        for device in self.workers:
-            device.store_data(storage_app)
-        
-        # 1. at least one server storing this data
-        List = LayerList
-        for _ in range(2):
-            for type in range(List.type_num):
-                l = List.get_list(type)
-                for data in l:
+        if self.config['cloud_model'] == 0 or self.config['cloud_model'] == 2 or self.config['cloud_model'] == 4:
+            # 0. everyone can serve as the storage filestore
+            for device in self.workers:
+                device.store_data(storage_app)
+            
+            # 1. at least one server storing this data
+            for List in [LayerList, ApplicationList]:
+                for data in List.get_list():
                     if storage_app == data:
                         continue
                         
@@ -121,20 +115,14 @@ class Environment(object):
                             # all M servers cannot store it, set error flag
                             raise ValueError(f"Data with id {data.id} cannot be stored in any a server!")
                     self.devices[index].store_data(data)    # host_id is appended in this method. if not, check it
-            List = ApplicationList
-            
-        # 2. every worker has the chance to store some arbitrary data
-        for device in self.workers:
-            # a) average 3 data in a client worker
-            data_num = np.random.randint(1, 5)  
-            for _ in range(data_num):
-                # b) layer 80% or app 20%
-                r2 = np.random.randint(0, 4)
-                for _ in range(2):
-                    if r2 == 0:
-                        List = ApplicationList
-                    else:
-                        List = LayerList
+                
+            # 2. every worker has the chance to store some arbitrary data
+            for device in self.workers:
+                # a) average 3 data in a client worker
+                data_num = np.random.randint(1, 5)  
+                for _ in range(data_num):
+                    # b) layer 80% or app 20%
+                    List = ApplicationList if np.random.randint(0, 10) < 2 else LayerList
                     # c) data
                     data = List.get_arbitrary_data()
                     ori = data.id
@@ -146,9 +134,37 @@ class Environment(object):
                             break
                     if avai_flag:
                         device.store_data(data)
-                        break   # success, jump out of the loop
-                    
-                    r2 = not r2
+        else:
+            List = ApplicationList
+            for app in List.get_list():
+                if app == storage_app:
+                    worker_num = len(self.workers)
+                else:
+                    worker_num = max(int(1 + 10 * np.random.randn(1)[0]), 1)
+                for _ in range(worker_num):
+                    ori = np.random.randint(0, M)
+                    index = ori
+                    worker = self.workers[index]
+                    while True:
+                        if app.id not in worker.apps:
+                            totalsize = app.size
+                            missing_layers = []
+                            for layer in app.env_layers:
+                                if layer.id not in worker.layers:
+                                    totalsize += layer.size
+                                    missing_layers.append(layer)
+                                
+                            if totalsize <= worker.mem:
+                                worker.store_data(app)
+                                for layer in missing_layers:
+                                    worker.store_data(layer)
+                                break
+                        
+                        index = index+1 if index < M-1 else 0
+                        worker = self.workers[index]
+                        if index == ori:
+                            break
+            
     
     def next(self):
         M, N = self.M, self.N
