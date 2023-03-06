@@ -16,7 +16,10 @@ class Environment(object):
         self.scheduled_tasks: list[Task] = []
         self.new_tasks: list[Task] = []
         self.fs_candidates = [] # filestore worker candidates in a slot
-    
+
+        self.layerList = LayerList()
+        self.appList = ApplicationList(self.layerList)
+        
         if len(config):
             self.load_config(config)
     
@@ -86,7 +89,7 @@ class Environment(object):
             else:
                 device = IoTDevice(i)
             self.devices.append(device)
-            area_id = np.random.randint(1, self.topology.area_num) if server_area_id == -1 else -1
+            area_id = np.random.randint(1, self.topology.area_num) if server_area_id == 0 else -1
             self.topology.add_device(device, area_id)
             if self.config['cloud_model'] == 0 and device.is_worker:
                 self.workers.append(device)
@@ -95,14 +98,14 @@ class Environment(object):
         
         # distribute layers & applications
         
-        storage_app = ApplicationList.get_list(1)[0]
+        storage_app = self.appList.get_list(1)[0]
         if "raas" in self.cloud_model_type():
             # 0. everyone can serve as the storage filestore
             for device in self.workers:
                 device.store_data(storage_app)
             
             # 1. at least one server storing this data
-            for List in [LayerList, ApplicationList]:
+            for List in [self.layerList, self.appList]:
                 for data in List.get_list():
                     if storage_app == data:
                         continue
@@ -122,7 +125,7 @@ class Environment(object):
                 data_num = np.random.randint(1, 5)  
                 for _ in range(data_num):
                     # b) layer 80% or app 20%
-                    List = ApplicationList if np.random.randint(0, 10) < 2 else LayerList
+                    List = self.appList if np.random.randint(0, 10) < 2 else self.layerList
                     # c) data
                     data = List.get_arbitrary_data()
                     ori = data.id
@@ -135,7 +138,7 @@ class Environment(object):
                     if avai_flag:
                         device.store_data(data)
         else:
-            List = ApplicationList
+            List = self.appList
             for app in List.get_list():
                 if app == storage_app:
                     worker_num = len(self.workers)
@@ -146,11 +149,11 @@ class Environment(object):
                     index = ori
                     worker = self.workers[index]
                     while True:
-                        if app.id not in worker.apps:
+                        if app not in worker.apps:
                             totalsize = app.size
                             missing_layers = []
                             for layer in app.env_layers:
-                                if layer.id not in worker.layers:
+                                if layer not in worker.layers:
                                     totalsize += layer.size
                                     missing_layers.append(layer)
                                 
@@ -169,11 +172,11 @@ class Environment(object):
     def next(self):
         M, N = self.M, self.N
         
-        for device in self.workers:
-        # severely influence the performance, comment it after finishing debugging!!!
-            err = device.check_error()
-            if err != 0:
-                raise ValueError(f"Error with tag {err} occurs in device {device.id}.")
+        # # severely influence the performance, comment it after finishing debugging!!!
+        # for device in self.workers:
+        #     err = device.check_error()
+        #     if err != 0:
+        #         raise ValueError(f"Error with tag {err} occurs in device {device.id}.")
         
         # 1. clear instant cache of the last slot
         self.new_tasks.clear() 
@@ -214,6 +217,8 @@ class Environment(object):
         for j in range(N):
             i = M + j
             self.new_tasks += self.devices[i].new_tasks
+        for task in self.new_tasks:
+            task.app = self.appList.get_data_by_id(task.app_id)
         
         self.tasks_num = len(self.new_tasks)
         self.task_index = 0
@@ -239,7 +244,7 @@ class Environment(object):
             for device in workers:
                 if device.id == task.user_id or (not device.check_task_availability(0, task)):
                     continue
-                if "raas" not in self.cloud_model_type() and task.app.id not in device.apps:
+                if "raas" not in self.cloud_model_type() and task.app not in device.apps:
                     # the traditional models ask the compute worker to be the only provider
                     continue
                 s, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
@@ -276,11 +281,11 @@ class Environment(object):
         # 4.3 find devicces with the target layers as depository candidates
         compute_link = self.topology.get_device_interface_link(compute)
         for layer_id in task.missing_layers:
-            layer = LayerList.get_data_by_id(layer_id)
+            layer = self.layerList.get_data_by_id(layer_id)
             min_estimated_time = 1e6
             target_d = -1
             for d_id in layer.hosts:
-                if layer_id in self.devices[d_id].layers:
+                if layer in self.devices[d_id].layers:
                     link = self.topology.get_device_interface_link_by_id(d_id)
                     estimated_time = link.occupied_time + layer.size / (min(link.bandwidth, compute_link.bandwidth)+1e6) * 1000
                     if estimated_time < min_estimated_time:
@@ -343,7 +348,7 @@ class Environment(object):
             cd_latency = 0.
             for index in range(len(depositories)):
                 depository = self.devices[depositories[index]]
-                layer = LayerList.get_data_by_id(task.missing_layers[index])
+                layer = self.layerList.get_data_by_id(task.missing_layers[index])
                 link_latency = self.topology.get_link_states_between_devices(compute, depository)[1]
                 begin_time = self.topology.get_link_occupied_time(compute, depository)
                 duration = self.topology.cal_transmission_duration(compute, depository, layer.size)
@@ -387,7 +392,7 @@ class Environment(object):
             # image fetching should be fromer than file transmission
             for index in range(len(depositories)):
                 depository = self.devices[depositories[index]]
-                layer = LayerList.get_data_by_id(task.missing_layers[index])
+                layer = self.layerList.get_data_by_id(task.missing_layers[index])
                 depository.allocate_tasks(2, task, layer.id)
                 # self.topology.occupy_bandwidth_between_devices(compute, depository, task.bandwidth(2))
                 # transmit images

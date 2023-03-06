@@ -10,6 +10,7 @@ class SimulationAgent(object):
         
         # Environment
         self.env_wrapper = EnvWrapper(config)
+        self.env_wrapper.seed(config['seed'])
         
         # Algorithm
         self.alg = OPGreedy()
@@ -67,3 +68,4 @@ class SimulationAgent(object):
                 
                 # if step % 100 == 0:
                 #     print(f"E{episode}S{step}: reward={reward}")
+            env.log_episode_statistics()

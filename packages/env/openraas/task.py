@@ -23,7 +23,8 @@ class Task(object):
         self.reset()
     
     def reset(self):
-        self.app = ApplicationList.get_arbitrary_data(self.type)
+        self.app_id = np.random.randint(0, ApplicationList.app_num)
+        self.app: Application   # inital in the Environment.next()
         self.providers = [-1, -1, []]
         self.life_time = self.span  # the rest time slot it can survive on the cloud
     

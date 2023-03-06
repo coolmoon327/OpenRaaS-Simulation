@@ -11,7 +11,8 @@ class Engine(object):
         config = self.config
         
         # Create directory for experiment
-        experiment_dir = f"{config['results_path']}/openraas-{datetime.now():%Y-%m-%d_%H:%M:%S}"
+        # experiment_dir = f"{config['results_path']}/openraas-{datetime.now():%Y-%m-%d_%H:%M:%S}"
+        experiment_dir = f"{config['results_path']}/openraas-simulation"
         if not os.path.exists(experiment_dir):
             os.makedirs(experiment_dir)
         

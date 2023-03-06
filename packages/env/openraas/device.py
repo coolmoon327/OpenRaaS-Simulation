@@ -10,10 +10,10 @@ class Device(object):
         self.isOpen = isOpen        # Whether the operating system is open to developers or not
         self.isMobile = isMobile    # Whether the device is mobile or fixed
         
-        self.layers = []    # IDs of stored container layers
+        self.layers: list[ContainerLayer] = []    # stored container layers
         self.timers = []    # timers of stored container layers
         self.default_timer = 5  # servers' timer is -1 so that they won't release layers
-        self.apps = []      # IDs of stored app data
+        self.apps: list[Application] = []      # tored app data
         
         self.req_tasks: list[ProcessTask] = [] # only used when it is a client
         self.new_tasks: list[ProcessTask] = []
@@ -41,13 +41,16 @@ class Device(object):
         self.metaos_tasks.clear()
         self.image_tasks.clear()
     
-        List = ApplicationList
-        ids = self.apps
-        for _ in range(2):
-            for id in ids:
-                self.mem -= List.get_data_by_id(id).size
-            List = LayerList
-            ids = self.layers
+        # List = ApplicationList
+        # ids = self.apps
+        # for _ in range(2):
+        #     for id in ids:
+        #         self.mem -= List.get_data_by_id(id).size
+        #     List = LayerList
+        #     ids = self.layers
+        
+        for data in self.layers+self.apps:
+            self.mem -= data.size
     
     def step(self):
         '''step into next time slot'''
@@ -65,7 +68,8 @@ class Device(object):
         for i in range(self.timers.__len__()):
             self.timers[i] -= 1
             if self.timers[i] == 0:
-                layer = LayerList.get_data_by_id(self.layers[i])
+                # layer = LayerList.get_data_by_id(self.layers[i])
+                layer = self.layers[i]
                 remove_list.append(layer)
         for layer in remove_list:
             self.remove_layer(layer)
@@ -79,22 +83,22 @@ class Device(object):
     ### layer management
     def fetch_layer(self, layer):
         # check if the layer is missing
-        if layer.id in self.layers:
+        if layer in self.layers:
             print(f"The layer {layer.id} exists in this device {self.id}.")
             return
         if self.mem < layer.size:
             raise ValueError(f"The layer {layer.id} size {layer.size} is larger than remain space {self.mem} of device {self.id}.")
         # add the missing layer into self repository
-        self.layers.append(layer.id)
+        self.layers.append(layer)
         self.timers.append(self.default_timer)
         layer.add_host(self.id)
         # resource changes
         self.mem -= layer.size
     
     def remove_layer(self, layer):
-        if layer.id not in self.layers:
+        if layer not in self.layers:
             raise ValueError(f"The layer {layer.id} does not exist in this device {self.id}.")
-        i = self.layers.index(layer.id)
+        i = self.layers.index(layer)
         del self.layers[i]
         del self.timers[i]
         layer.remove_host(self.id)
@@ -112,7 +116,7 @@ class Device(object):
     def find_missing_layers(self, task):
         ml = []
         for layer in task.app.env_layers:
-            if layer.id not in self.layers:
+            if layer not in self.layers:
                 ml.append(layer.id)
         return ml
     
@@ -143,7 +147,7 @@ class Device(object):
                 # remain env space check
                 required_space = task.mem
                 for layer in task.app.env_layers:
-                    if layer.id not in self.layers:
+                    if layer not in self.layers:
                         required_space += layer.size
                 if required_space > self.mem:
                     ans = False
@@ -154,13 +158,13 @@ class Device(object):
                     ans = False
             # app check
             else:
-                if task.app.id not in self.apps:
+                if task.app not in self.apps:
                     ans = False
         elif microservice_type == 2:
             # env layer check
             any_layer_existing = False
             for layer in task.app.env_layers:
-                if layer.id in self.layers:
+                if layer in self.layers:
                     any_layer_existing = True
                     break
             if not any_layer_existing:
@@ -189,12 +193,11 @@ class Device(object):
                 self.mem -= task.mem
             # fetch layers
             for layer in task.app.env_layers:
-                # if layer.id not in self.layers:
                 if layer.id in task.missing_layers:
                     self.fetch_layer(layer)
                 else:
                     # self.refresh_layer_timers(layer=layer)
-                    self.timers[self.layers.index(layer.id)] = self.default_timer
+                    self.timers[self.layers.index(layer)] = self.default_timer
         
         elif microservice_type == 1:
             if task.type == 1:
@@ -202,7 +205,10 @@ class Device(object):
                 self.mem -= task.mem
 
         elif microservice_type == 2:
-            local_index = self.layers.index(layer_id)
+            for i in range(len(self.layers)):
+                if self.layers[i].id == layer_id:
+                    local_index = i
+                    break
             self.timers[local_index] = self.default_timer
     
     def release_task(self, microservice_type, task):
@@ -257,9 +263,9 @@ class Device(object):
         if data.type == -1:
             raise ValueError(f"Data with id {data.id} didn't set type value!")
         elif 10 <= data.type < 13:
-            self.apps.append(data.id)
+            self.apps.append(data)
         else:
-            self.layers.append(data.id)
+            self.layers.append(data)
             self.timers.append(self.default_timer)
         data.add_host(self.id)
     
@@ -325,13 +331,15 @@ class Device(object):
                 bw += task.bandwidth(0)
             
         # 2.2 stored applications & images
-        List = ApplicationList
-        ids = self.apps
-        for _ in range(2):
-            for id in ids:
-                mem += List.get_data_by_id(id).size
-            List = LayerList
-            ids = self.layers
+        # List = ApplicationList
+        # ids = self.apps
+        # for _ in range(2):
+        #     for id in ids:
+        #         mem += List.get_data_by_id(id).size
+        #     List = LayerList
+        #     ids = self.layers
+        for data in self.apps+self.layers:
+            mem += data.size
         
         if not(math.isclose(cpu, C[0], rel_tol=1e-2) and math.isclose(mem, C[1], rel_tol=1e-2) and math.isclose(bw, C[2], rel_tol=1e-2)):
             return -2
@@ -355,7 +363,7 @@ class Server(Device):
 class Client(Device):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
-        self.is_worker = True if np.random.randint(0, 10) < 0 else False    # 20% to be a worker
+        self.is_worker = True if np.random.randint(0, 10) < 2 else False    # 20% to be a worker
     
     def generate_task(self, task_type=-1):
         if task_type == -1:
