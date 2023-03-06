@@ -6,14 +6,14 @@ class EnvWrapper:
         self.config = config
         self.env = Environment(config)
         
-        self.episode_dropped_rate = []
+        self.episode_drop_rate = []
         self.episode_worker_occupation = []
         self.episode_server_occupation = []
 
     def reset(self):
         state = self.env.reset()
         
-        self.episode_dropped_rate.clear()
+        self.episode_drop_rate.clear()
         self.episode_worker_occupation.clear()
         self.episode_server_occupation.clear()
         return state
@@ -64,7 +64,7 @@ class EnvWrapper:
     
     def statistic(self, enter_next_slot=False):
         if enter_next_slot:
-            self.episode_dropped_rate.append(1-self.served_percent)
+            self.episode_drop_rate.append(1-self.served_percent)
             self.episode_worker_occupation.append(self.worker_occupation)
             self.episode_server_occupation.append(self.server_occupation)
             
@@ -84,13 +84,14 @@ class EnvWrapper:
         self.worker_occupation = [np.mean(occupation[0]), np.mean(occupation[1]), np.mean(occupation[2])]
         self.server_occupation = [np.mean(occupation[0][:M]), np.mean(occupation[1][:M]), np.mean(occupation[2][:M])]
     
-    def log_episode_statistics(self):
-        dropped_rate = np.mean(self.episode_dropped_rate)
+    def log_episode_statistics(self, logger):
+        drop_rate = np.mean(self.episode_drop_rate)
         worker_cpu_rate = np.mean(self.episode_worker_occupation[:][0])
         worker_mem_rate = np.mean(self.episode_worker_occupation[:][1])
         worker_bw_rate = np.mean(self.episode_worker_occupation[:][2])
         server_cpu_rate = np.mean(self.episode_server_occupation[:][0])
         server_mem_rate = np.mean(self.episode_server_occupation[:][1])
         server_bw_rate = np.mean(self.episode_server_occupation[:][2])
-        print(f"{self.config['N']}, {self.config['cloud_model']}")
-        print(dropped_rate, worker_cpu_rate, server_cpu_rate, worker_mem_rate, server_mem_rate, worker_bw_rate, server_bw_rate)
+        # print(f"{self.config['N']}, {self.config['cloud_model']}")
+        # print(dropped_rate, worker_cpu_rate, server_cpu_rate, worker_mem_rate, server_mem_rate, worker_bw_rate, server_bw_rate)
+        logger.scalar_summary(f"drop_rate/{self.config['cloud_model']}", drop_rate, self.config['N'])

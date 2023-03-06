@@ -68,4 +68,5 @@ class SimulationAgent(object):
                 
                 # if step % 100 == 0:
                 #     print(f"E{episode}S{step}: reward={reward}")
-            env.log_episode_statistics()
+        
+        env.log_episode_statistics(self.logger)
