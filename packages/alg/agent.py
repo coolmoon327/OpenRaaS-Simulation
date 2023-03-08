@@ -23,6 +23,8 @@ class SimulationAgent(object):
         env = self.env_wrapper
         config = self.config
         
+        logs = []
+
         def get_state_clip(s, length):
             # reset self.temp_point beforing using this function
             begin = self.temp_point
@@ -68,5 +70,12 @@ class SimulationAgent(object):
                 
                 # if step % 100 == 0:
                 #     print(f"E{episode}S{step}: reward={reward}")
+            if config['get_statistics']:
+                logs.append(env.log_episode_statistics())
         
-        env.log_episode_statistics(self.logger)
+        mean_logs = {}
+        if config['get_statistics']:
+            for key in logs[0]:
+                mean_logs[key] = np.mean([logs[i][key] for i in range(len(logs))])
+
+        return mean_logs

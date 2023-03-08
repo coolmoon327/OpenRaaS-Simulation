@@ -84,14 +84,20 @@ class EnvWrapper:
         self.worker_occupation = [np.mean(occupation[0]), np.mean(occupation[1]), np.mean(occupation[2])]
         self.server_occupation = [np.mean(occupation[0][:M]), np.mean(occupation[1][:M]), np.mean(occupation[2][:M])]
     
-    def log_episode_statistics(self, logger):
-        drop_rate = np.mean(self.episode_drop_rate)
-        worker_cpu_rate = np.mean(self.episode_worker_occupation[:][0])
-        worker_mem_rate = np.mean(self.episode_worker_occupation[:][1])
-        worker_bw_rate = np.mean(self.episode_worker_occupation[:][2])
-        server_cpu_rate = np.mean(self.episode_server_occupation[:][0])
-        server_mem_rate = np.mean(self.episode_server_occupation[:][1])
-        server_bw_rate = np.mean(self.episode_server_occupation[:][2])
-        # print(f"{self.config['N']}, {self.config['cloud_model']}")
-        # print(dropped_rate, worker_cpu_rate, server_cpu_rate, worker_mem_rate, server_mem_rate, worker_bw_rate, server_bw_rate)
-        logger.scalar_summary(f"drop_rate/{self.config['cloud_model']}", drop_rate, self.config['N'])
+    def log_episode_statistics(self):
+        logs = {}
+        logs['drop_rate'] = np.mean(self.episode_drop_rate)
+        logs['worker_cpu_rate'] = np.mean(self.episode_worker_occupation[:][0])
+        logs['worker_mem_rate'] = np.mean(self.episode_worker_occupation[:][1])
+        logs['worker_bw_rate'] = np.mean(self.episode_worker_occupation[:][2])
+        logs['server_cpu_rate'] = np.mean(self.episode_server_occupation[:][0])
+        logs['server_mem_rate'] = np.mean(self.episode_server_occupation[:][1])
+        logs['server_bw_rate'] = np.mean(self.episode_server_occupation[:][2])
+
+        # start_delay, service_latency, speed, jilter
+        logs['start_delay'] = np.mean(self.env.finished_tasks_qos[:][0])
+        logs['service_latency'] = np.mean(self.env.finished_tasks_qos[:][1])
+        logs['speed'] = np.mean(self.env.finished_tasks_qos[:][2])
+        logs['jilter'] = np.mean(self.env.finished_tasks_qos[:][3])
+
+        return logs

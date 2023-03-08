@@ -23,6 +23,7 @@ class Device(object):
         self.image_tasks: list[DesktopTask] = []       # serve as a depository worker        
         self.reset()
         
+        self.is_client = False
         self.is_worker = True
         self.worker_type = 0
         self.p_coef = [(np.random.randint(50, 100) / 100.), (np.random.randint(50, 100) / 100. / 1000.), (np.random.randint(50, 100) / 100.) ]  # p_coef = [0.5, 1]
@@ -64,15 +65,16 @@ class Device(object):
         self.inner_cpu += self.cpu - new_cpu
         self.cpu = new_cpu
         
-        remove_list = []
-        for i in range(self.timers.__len__()):
-            self.timers[i] -= 1
-            if self.timers[i] == 0:
-                # layer = LayerList.get_data_by_id(self.layers[i])
-                layer = self.layers[i]
-                remove_list.append(layer)
-        for layer in remove_list:
-            self.remove_layer(layer)
+        if self.is_client:
+            remove_list = []
+            for i in range(self.timers.__len__()):
+                self.timers[i] -= 1
+                if self.timers[i] == 0:
+                    # layer = LayerList.get_data_by_id(self.layers[i])
+                    layer = self.layers[i]
+                    remove_list.append(layer)
+            for layer in remove_list:
+                self.remove_layer(layer)
     
     def external_cpu_occupation(self):
         cpu = 0.
@@ -363,7 +365,8 @@ class Server(Device):
 class Client(Device):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
-        self.is_worker = True if np.random.randint(0, 10) < 2 else False    # 20% to be a worker
+        self.is_worker = True if np.random.randint(0, 10) < 2 else False    # 40% to be a worker
+        self.is_client = True
     
     def generate_task(self, task_type=-1):
         if task_type == -1:

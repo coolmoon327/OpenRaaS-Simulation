@@ -20,6 +20,9 @@ class Environment(object):
         self.layerList = LayerList()
         self.appList = ApplicationList(self.layerList)
         
+        # logs
+        self.finished_tasks_qos = []    # [[start_delay, service_latency, speed, jilter], ...]
+
         if len(config):
             self.load_config(config)
     
@@ -44,6 +47,8 @@ class Environment(object):
         self.scheduled_tasks.clear()
         self.new_tasks.clear()
         self.fs_candidates.clear()
+
+        self.finished_tasks_qos.clear()
         
         self.task_index = 0
         
@@ -261,6 +266,9 @@ class Environment(object):
         task.set_provider(0, target_c)
         task.missing_layers = compute.find_missing_layers(task)
         
+        if "raas" not in self.cloud_model_type() and len(task.missing_layers):
+            raise ValueError(f"Cloud model {self.cloud_model_type()} chosed a wrong compute worker {compute.id} lack of {len(task.missing_layers)} layers.")
+        
         # 4.2 find devices with the target application as filestore candidates (return 10 candidates)
         # 4.2.1 finds all available devices
         avail_fs = []
@@ -365,6 +373,7 @@ class Environment(object):
             speed = min(uc_speed, cf_speed)
             jilter = uc_jilter + cf_jilter
             
+            self.finished_tasks_qos.append([start_delay, service_latency, speed, jilter])
             utility = task.utility(start_delay, service_latency, speed, jilter)
         
             # b-2 estimate cost

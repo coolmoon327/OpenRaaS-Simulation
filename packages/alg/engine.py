@@ -19,4 +19,6 @@ class Engine(object):
         # Create agent handling environment & algorithm
         agent = SimulationAgent(config, experiment_dir)
         
-        agent.run()
+        logs = agent.run()
+
+        return logs, config
