@@ -27,9 +27,9 @@ class Area(object):
         self.devices: list[int] = []    # devices' IDs
         self.lines: list[Line] = []     # devices' lines with respect to self.devices
         
-        bw = max(300 + 100 * np.random.randn(1)[0], 1.)*1000/8 # (1 ~ 500)/8 GBps
-        l = max(10 + 3 * np.random.randn(1)[0], 1.) # 1 ~ 19 ms
-        j = max(5 + 1 * np.random.randn(1)[0], 0) # 2 ~ 8
+        bw = max(3 + 2 * np.random.randn(1)[0], .5)*1000/8 # (1 ~ 10)/8 GBps
+        l = max(40 + 20 * np.random.randn(1)[0], 1.) # 1 ~ 19 ms
+        j = max(15 + 10 * np.random.randn(1)[0], 0) # 2 ~ 8
         self.backbone = Line(bw, l, j)
     
     def clear(self):
@@ -118,6 +118,9 @@ class Topology(object):
             jilter: total sampledd jilters
         
         """
+        if d1 == d2:
+            return 1e8, 0., 0.
+        
         a1 = self.get_area_by_device_id(d1)
         a2 = self.get_area_by_device_id(d2)
         i1 = self.get_device_interface_link_by_id(d1)

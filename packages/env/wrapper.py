@@ -86,13 +86,17 @@ class EnvWrapper:
     
     def log_episode_statistics(self):
         logs = {}
+        
+        worker_logs = np.array(self.episode_worker_occupation)
+        server_logs = np.array(self.episode_server_occupation)
+        
         logs['drop_rate'] = np.mean(self.episode_drop_rate)
-        logs['worker_cpu_rate'] = np.mean(self.episode_worker_occupation[:][0])
-        logs['worker_mem_rate'] = np.mean(self.episode_worker_occupation[:][1])
-        logs['worker_bw_rate'] = np.mean(self.episode_worker_occupation[:][2])
-        logs['server_cpu_rate'] = np.mean(self.episode_server_occupation[:][0])
-        logs['server_mem_rate'] = np.mean(self.episode_server_occupation[:][1])
-        logs['server_bw_rate'] = np.mean(self.episode_server_occupation[:][2])
+        logs['worker_cpu_rate'] = np.mean(worker_logs[:, 0])
+        logs['worker_mem_rate'] = np.mean(worker_logs[:, 1])
+        logs['worker_bw_rate'] = np.mean(worker_logs[:, 2])
+        logs['server_cpu_rate'] = np.mean(server_logs[:, 0])
+        logs['server_mem_rate'] = np.mean(server_logs[:, 1])
+        logs['server_bw_rate'] = np.mean(server_logs[:, 2])
 
         # start_delay, service_latency, speed, jilter
         logs['start_delay'] = np.mean(self.env.finished_tasks_qos[:][0])

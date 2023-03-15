@@ -58,12 +58,15 @@ class Device(object):
         # 1. clear instant cache of the last slot
         # don't clear tasks set here, because destop services may occupy several slots
         
-        # 2. update work load
-        # be care the self.mem is prepared for OpenRaaS, and cannot be occupied by internal processes
-        cpu_offset = self.capacity[0] * (0.1 * np.random.randn(1)[0])   # -0.3 ~ 0.3 of cpu capacity
-        new_cpu = np.clip(self.cpu+cpu_offset, 0., self.capacity[0]-self.external_cpu_occupation())
-        self.inner_cpu += self.cpu - new_cpu
-        self.cpu = new_cpu
+        if False:
+            # 2. update work load
+            # be care the self.mem is prepared for OpenRaaS, and cannot be occupied by internal processes
+            cpu_offset = self.capacity[0] * (0.1 * np.random.randn(1)[0])   # -0.3 ~ 0.3 of cpu capacity
+            new_cpu = np.clip(self.cpu+cpu_offset, 0., self.capacity[0]-self.external_cpu_occupation())
+            self.inner_cpu += self.cpu - new_cpu
+            self.cpu = new_cpu
+        else:
+            pass
         
         if self.is_client:
             remove_list = []
@@ -147,7 +150,9 @@ class Device(object):
                 ans = False
             else:
                 # remain env space check
-                required_space = task.mem
+                required_space = 0.
+                if task.type != 1:
+                    required_space += task.mem
                 for layer in task.app.env_layers:
                     if layer not in self.layers:
                         required_space += layer.size
@@ -182,9 +187,12 @@ class Device(object):
         1: the filestore worker, and add the task into metaos_tasks
         2: the depository worker, and add the task into image_tasks
         '''
+
+        # Used for debugging
+        # if not self.check_task_availability(microservice_type, task):
+        #     raise ValueError(f"The task with id {task.id} cannot be handled by device {self.id} in microservice_type {microservice_type}")
+        
         tasks = self.get_tasks_set(microservice_type)
-        if not self.check_task_availability(microservice_type, task):
-            raise ValueError(f"The task with id {task.id} cannot be handled by device {self.id} in microservice_type {microservice_type}")
         tasks.append(task)
         
         # resource occupation
@@ -394,8 +402,8 @@ class Client(Device):
         super().step()
         # generate new tasks
         self.new_tasks.clear()
-        if np.random.randint(0,10) < 2:     # 20% chance to gain a new requirement
-            self.generate_task()
+        if np.random.randint(0,10) < 4:     # 40% chance to gain a new requirement
+            self.generate_task(1)
 
 
 class Desktop(Client):

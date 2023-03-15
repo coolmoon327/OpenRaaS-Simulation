@@ -9,11 +9,12 @@ def run_simulation(config):
     # print(f"start simulation with N {config['N']}")
     engine = Engine(config)
     ret = engine.run_simulation()
+    print(f"Finshed {config['M']}_{config['N']}_{config['cloud_model']}")
     # print(len(ret))
     return ret
 
 def callback_simulation(x):
-    print("Finished")
+    print("=====All Finished=====")
     logger = Logger("results/openraas-simulation/simulation")
     for logs, conf in x:
         logger.scalars_summary("cahnge_N/drop_rate", {str(conf['cloud_model']): logs['drop_rate']}, conf['N'])
@@ -30,13 +31,16 @@ def callback_simulation(x):
         logger.scalars_summary("cahnge_N/jilter", {str(conf['cloud_model']): logs['jilter']}, conf['N'])
 
 def test_openraas(config):
-    pool = mp.Pool(40)
+    pool = mp.Pool(32)
     
     # 1. change N
     configs = []
-    for N in range(1000, 20001, 1000):
+    # for N in range(1000, 20001, 1000):
+    for N in range(100, 5101, 500):
         config['N'] = N
-        for cloud_model in [0, 1, 3]:#range(5):
+        for cloud_model in [0, 1, 3]:
+        # for cloud_model in range(5):
+        # for cloud_model in [1]:
             config['cloud_model'] = cloud_model
             configs.append(copy.deepcopy(config))
     
@@ -44,12 +48,17 @@ def test_openraas(config):
     pool.close()
     pool.join()
 
+    # while True:
+    time.sleep(1)
+
+def debug(config):
+    config['N'] = 100
+    config['cloud_model'] = 1
+    ret = run_simulation(config)
+    print(ret)
+
 if __name__ == "__main__":
     config = read_config('config.yml')
     
     test_openraas(copy.deepcopy(config))
-    
-    # while True:
-    time.sleep(5)
-    
-    
+    # debug(config)

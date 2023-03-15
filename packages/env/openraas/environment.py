@@ -105,6 +105,8 @@ class Environment(object):
         
         storage_app = self.appList.get_list(1)[0]
         if "raas" in self.cloud_model_type():
+            ### resource as a service
+            
             # 0. everyone can serve as the storage filestore
             for device in self.workers:
                 device.store_data(storage_app)
@@ -143,36 +145,48 @@ class Environment(object):
                     if avai_flag:
                         device.store_data(data)
         else:
+            ### resource as a whole
+            
+            def add_all_layers_of_app(device: Device, app: Application):
+                totalsize = 0.
+                if app not in device.apps:
+                    totalsize += app.size
+                missing_layers = []
+                for layer in app.env_layers:
+                    if layer not in device.layers:
+                        totalsize += layer.size
+                        missing_layers.append(layer)
+                    
+                if totalsize <= worker.mem:
+                    if app not in device.apps:
+                        device.store_data(app)
+                    for layer in missing_layers:
+                        device.store_data(layer)
+                    return True
+                return False
+            
             List = self.appList
             for app in List.get_list():
                 if app == storage_app:
-                    worker_num = len(self.workers)
-                else:
-                    worker_num = max(int(1 + 10 * np.random.randn(1)[0]), 1)
+                    for worker in self.workers:
+                        add_all_layers_of_app(worker, storage_app)
+                    continue
+                
+                worker_num = max(int(1 + 10 * np.random.randn(1)[0]), 1)
                 for _ in range(worker_num):
                     ori = np.random.randint(0, M)
                     index = ori
                     worker = self.workers[index]
                     while True:
                         if app not in worker.apps:
-                            totalsize = app.size
-                            missing_layers = []
-                            for layer in app.env_layers:
-                                if layer not in worker.layers:
-                                    totalsize += layer.size
-                                    missing_layers.append(layer)
-                                
-                            if totalsize <= worker.mem:
-                                worker.store_data(app)
-                                for layer in missing_layers:
-                                    worker.store_data(layer)
+                            ret = add_all_layers_of_app(worker, app)
+                            if ret:
                                 break
                         
                         index = index+1 if index < M-1 else 0
                         worker = self.workers[index]
                         if index == ori:
                             break
-            
     
     def next(self):
         M, N = self.M, self.N
@@ -239,19 +253,31 @@ class Environment(object):
         
         # 4.1 find the closest worker as compute candidates
         target_c = -1
+        minn = 1e6
         if task.bandwidth(0) <= client.bw:
-            minn = 1e6
             if "center" not in self.cloud_model_type() and self.config['compute_at_edge']:
                 edge = self.topology.get_area_by_device(client)
-                workers = [self.devices[did] for did in edge.devices]
+                eds = [self.devices[did] for did in edge.devices]
+                workers = []
+                for ed in eds:
+                    if ed.is_worker:
+                        workers.append(ed)
             else:
                 workers = self.workers  
+            
             for device in workers:
                 if device.id == task.user_id or (not device.check_task_availability(0, task)):
                     continue
-                if "raas" not in self.cloud_model_type() and task.app not in device.apps:
-                    # the traditional models ask the compute worker to be the only provider
-                    continue
+                if "raas" not in self.cloud_model_type():
+                    if task.app not in device.apps:
+                        # the traditional models ask the compute worker to be the only provider
+                        continue
+                else:
+                    if task.mem > device.mem:
+                        # check_task_availability won't check storage tasks' mem for compute worker
+                        # but non-raas workers should have the availability
+                        continue
+                    
                 s, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
                 total_latency = l + task.mem / (s+1e6) * 1000.
                 if total_latency < minn:
@@ -272,9 +298,13 @@ class Environment(object):
         # 4.2 find devices with the target application as filestore candidates (return 10 candidates)
         # 4.2.1 finds all available devices
         avail_fs = []
-        for fs_id in task.app.hosts:
-            if self.devices[fs_id].check_task_availability(1, task):
-                avail_fs.append(fs_id)
+        
+        if "raas" in self.cloud_model_type():
+            for fs_id in task.app.hosts:
+                if self.devices[fs_id].check_task_availability(1, task):
+                    avail_fs.append(fs_id)
+        else:
+            avail_fs.append(target_c)
         
         # 4.2.2 calculate their priorities
         dict_p = {}
