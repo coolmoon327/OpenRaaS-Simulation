@@ -1,6 +1,9 @@
 import numpy as np
 from .device import *
 
+p0 = 1e-10
+n0 = -p0
+
 
 class Line(object):
     def __init__(self, bandwidth, latency, jilter):
@@ -181,8 +184,10 @@ class Topology(object):
             a1.backbone.bandwidth -= bw
             a2.backbone.bandwidth -= bw
 
-        if i1.bandwidth < 0 or i2.bandwidth < 0 or a1.backbone.bandwidth < 0 or a2.backbone.bandwidth < 0:
-            raise ValueError(f"Negative bandwidth.")
+        if i1.bandwidth < n0 or i2.bandwidth < n0:
+            raise ValueError(f"Negative bandwidth ({i1.bandwidth}, {i2.bandwidth}) in interface.")
+        if a1.backbone.bandwidth < n0 or a2.backbone.bandwidth < n0:
+            raise ValueError(f"Negative bandwidth ({a1.bandwidth}, {a2.bandwidth}) in backbone.")
         
     def release_bandwidth_between_devices(self, device1: Device, device2: Device, bw):
         return self.occupy_bandwidth_between_devices(device1, device2, -bw)

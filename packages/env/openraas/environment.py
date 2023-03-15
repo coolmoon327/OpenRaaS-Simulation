@@ -277,7 +277,12 @@ class Environment(object):
                         # check_task_availability won't check storage tasks' mem for compute worker
                         # but non-raas workers should have the availability
                         continue
-                    
+                
+                if task.type == 2:
+                    link_bw = self.topology.get_link_states_between_devices(client, device)[0]
+                    if link_bw < task.bandwidth(0):
+                        continue
+                
                 s, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
                 total_latency = l + task.mem / (s+1e6) * 1000.
                 if total_latency < minn:
@@ -301,7 +306,12 @@ class Environment(object):
         
         if "raas" in self.cloud_model_type():
             for fs_id in task.app.hosts:
-                if self.devices[fs_id].check_task_availability(1, task):
+                device = self.devices[fs_id]
+                if device.check_task_availability(1, task):
+                    if task.type == 2:
+                        link_bw = self.topology.get_link_states_between_devices(compute, device)[0]
+                        if link_bw < task.bandwidth(1):
+                            continue
                     avail_fs.append(fs_id)
         else:
             avail_fs.append(target_c)
@@ -393,15 +403,16 @@ class Environment(object):
                 cd_latency = max(cd_latency, link_latency + begin_time + duration)
             
             start_delay = cd_latency
-            if task.type == 0:
-                service_latency = uc_latency
-            elif task.type == 1:
-                service_latency = cf_latency + uc_latency
-            elif task.type == 2:
-                service_latency = uc_latency
             
-            speed = min(uc_speed, cf_speed)
-            jilter = uc_jilter + cf_jilter
+            if task.type == 1:
+                # storage: forward
+                speed = min(uc_speed, cf_speed)
+                jilter = uc_jilter + cf_jilter
+                service_latency = cf_latency + uc_latency
+            else:
+                speed = uc_speed
+                jilter = uc_jilter
+                service_latency = uc_latency
             
             self.finished_tasks_qos.append([start_delay, service_latency, speed, jilter])
             utility = task.utility(start_delay, service_latency, speed, jilter)

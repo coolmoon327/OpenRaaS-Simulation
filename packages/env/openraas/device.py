@@ -3,6 +3,9 @@ from .task import *
 from .app import *
 import math
 
+TASK_TYPE = -1
+
+
 class Device(object):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
         self.id = id                # Identification number, should be unique
@@ -139,11 +142,12 @@ class Device(object):
         '''check whether the task can be executed in this device with microservice_type'''
         ans = True
         
-        BW = task.bandwidth(microservice_type)
-        if microservice_type == 0:
-            BW += task.bandwidth(1)
-        if BW > self.bw:
-            return False
+        if self.id != task.get_provider(0):
+            BW = task.bandwidth(microservice_type)
+            if microservice_type == 0:
+                BW += task.bandwidth(1)
+            if BW > self.bw:
+                return False
         
         if microservice_type == 0:
             if self.isMobile == True or self.isOpen == False or task.cpu > self.cpu:
@@ -373,7 +377,7 @@ class Server(Device):
 class Client(Device):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
-        self.is_worker = True if np.random.randint(0, 10) < 2 else False    # 40% to be a worker
+        self.is_worker = True if np.random.randint(0, 10) < 2 else False    # 20% to be a worker
         self.is_client = True
     
     def generate_task(self, task_type=-1):
@@ -402,8 +406,8 @@ class Client(Device):
         super().step()
         # generate new tasks
         self.new_tasks.clear()
-        if np.random.randint(0,10) < 4:     # 40% chance to gain a new requirement
-            self.generate_task(1)
+        if np.random.randint(0,10) < 10:     # 60% chance to gain a new requirement
+            self.generate_task(TASK_TYPE)
 
 
 class Desktop(Client):

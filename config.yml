@@ -1,6 +1,6 @@
 # Environment
 
-seed: 1111
+seed: 1112
 
 M: 30     # number of edge servers
 N: 1000   # number of edge devices
@@ -23,8 +23,8 @@ filestore_info_num: 3 # the properties number of a filestore worker
 # Training
 
 batch_size: 512
-num_ep_train: 3 # number of episodes from all agents
-max_ep_length: 5000 # maximum number of steps per episode
+num_ep_train: 30 # number of episodes from all agents
+max_ep_length: 20000 # maximum number of steps per episode
 
 # Miscellaneous
 

@@ -30,13 +30,20 @@ def callback_simulation(x):
         logger.scalars_summary("cahnge_N/speed", {str(conf['cloud_model']): logs['speed']}, conf['N'])
         logger.scalars_summary("cahnge_N/jilter", {str(conf['cloud_model']): logs['jilter']}, conf['N'])
 
+def callback_error(error):
+    print("=====Something wrong in executing=====")
+    print(error)
+    print("======================================")
+    with open('error_log.txt', 'w') as f:
+        f.write(time.ctime() + ':' + str(error) + '\n')
+
 def test_openraas(config):
-    pool = mp.Pool(32)
+    pool = mp.Pool(30)
     
     # 1. change N
     configs = []
     # for N in range(1000, 20001, 1000):
-    for N in range(100, 5101, 500):
+    for N in range(100, 4001, 100):
         config['N'] = N
         for cloud_model in [0, 1, 3]:
         # for cloud_model in range(5):
@@ -44,7 +51,7 @@ def test_openraas(config):
             config['cloud_model'] = cloud_model
             configs.append(copy.deepcopy(config))
     
-    pool.map_async(run_simulation, configs, callback=callback_simulation)
+    pool.map_async(run_simulation, configs, callback=callback_simulation, error_callback=callback_error)
     pool.close()
     pool.join()
 
@@ -52,10 +59,12 @@ def test_openraas(config):
     time.sleep(1)
 
 def debug(config):
-    config['N'] = 100
-    config['cloud_model'] = 1
-    ret = run_simulation(config)
-    print(ret)
+    for cloud_model in [0, 1, 3]:
+        config['cloud_model'] = cloud_model
+        for N in range(100, 1000, 100):
+            config['N'] = N
+            ret = run_simulation(config)
+            print(ret)
 
 if __name__ == "__main__":
     config = read_config('config.yml')
