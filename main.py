@@ -38,12 +38,17 @@ def callback_error(error):
         f.write(time.ctime() + ':' + str(error) + '\n')
 
 def test_openraas(config):
-    pool = mp.Pool(30)
+    pool = mp.Pool(32)
+    
+    if config['debug_mode']:
+        step = 100
+    else:
+        step = 50
     
     # 1. change N
     configs = []
     # for N in range(1000, 20001, 1000):
-    for N in range(100, 4001, 100):
+    for N in range(50, 1001, step):
         config['N'] = N
         for cloud_model in [0, 1, 3]:
         # for cloud_model in range(5):
@@ -60,8 +65,10 @@ def test_openraas(config):
 
 def debug(config):
     for cloud_model in [0, 1, 3]:
+        cloud_model = 0
         config['cloud_model'] = cloud_model
         for N in range(100, 1000, 100):
+            N = 1000
             config['N'] = N
             ret = run_simulation(config)
             print(ret)

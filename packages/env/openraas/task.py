@@ -141,13 +141,14 @@ class DesktopTask(Task):
         '''
         cpu = max(5 + 10 * np.random.randn(1)[0], 0.1)       # 5
         span = round(max(1 + 3 * np.random.randn(1)[0], 1.))        # time slots existing on the cloud drive
+        mem = max(1000 + 300 * np.random.randn(1)[0], 10.)
         # span = 1
-        super().__init__(2, cpu, 0., user_id, span)
+        super().__init__(2, cpu, mem, user_id, span)
         self.set_QoS_weight()
         
         # self.bw = max(100 + 30 * np.random.randn(1)[0], 0.)/8       # (10 ~ 190)/8
         # self.bw = min(self.bw, bandwidth_maximum)
-        self.bw = np.random.randint(1, max(2, min(100*100, int(bandwidth_maximum*100)))) / 100. / 8.
+        self.bw = np.random.randint(1, max(2, min(100, int(bandwidth_maximum*8))*100)) / 100. / 8.
     
     def bandwidth(self, type):
         '''get bandwidth occupation

@@ -3,7 +3,7 @@ from .task import *
 from .app import *
 import math
 
-TASK_TYPE = -1
+TASK_TYPE = 2
 
 
 class Device(object):
@@ -31,6 +31,8 @@ class Device(object):
         self.worker_type = 0
         self.p_coef = [(np.random.randint(50, 100) / 100.), (np.random.randint(50, 100) / 100. / 1000.), (np.random.randint(50, 100) / 100.) ]  # p_coef = [0.5, 1]
         # TODO: design how to charge
+        
+        self.debug_mode = False
     
     def reset(self):
         # not reset layers & apps
@@ -142,10 +144,13 @@ class Device(object):
         '''check whether the task can be executed in this device with microservice_type'''
         ans = True
         
-        if self.id != task.get_provider(0):
-            BW = task.bandwidth(microservice_type)
+        if task.type == 2:
+            BW = 0
             if microservice_type == 0:
-                BW += task.bandwidth(1)
+                BW = task.bandwidth(0) + task.bandwidth(1)
+            elif microservice_type == 1:
+                if self.id != task.get_provider(0):
+                    BW = task.bandwidth(1)
             if BW > self.bw:
                 return False
         
@@ -192,9 +197,10 @@ class Device(object):
         2: the depository worker, and add the task into image_tasks
         '''
 
-        # Used for debugging
-        # if not self.check_task_availability(microservice_type, task):
-        #     raise ValueError(f"The task with id {task.id} cannot be handled by device {self.id} in microservice_type {microservice_type}")
+        if self.debug_mode:
+            # Used for debugging
+            if not self.check_task_availability(microservice_type, task):
+                raise ValueError(f"The task with id {task.id} cannot be handled by device {self.id} in microservice_type {microservice_type}")
         
         tasks = self.get_tasks_set(microservice_type)
         tasks.append(task)
@@ -355,7 +361,7 @@ class Device(object):
         for data in self.apps+self.layers:
             mem += data.size
         
-        if not(math.isclose(cpu, C[0], rel_tol=1e-2) and math.isclose(mem, C[1], rel_tol=1e-2) and math.isclose(bw, C[2], rel_tol=1e-2)):
+        if not(math.isclose(cpu, C[0], rel_tol=1e-10) and math.isclose(mem, C[1], rel_tol=1e-10) and math.isclose(bw, C[2], rel_tol=1e-10)):
             return -2
         return 0
     
@@ -377,7 +383,7 @@ class Server(Device):
 class Client(Device):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
-        self.is_worker = True if np.random.randint(0, 10) < 2 else False    # 20% to be a worker
+        self.is_worker = True if np.random.randint(0, 10) < 2 else False    # 20% to be a worker    # change in environment.py
         self.is_client = True
     
     def generate_task(self, task_type=-1):
@@ -406,7 +412,7 @@ class Client(Device):
         super().step()
         # generate new tasks
         self.new_tasks.clear()
-        if np.random.randint(0,10) < 10:     # 60% chance to gain a new requirement
+        if np.random.randint(0,10) < 10:     # 100% chance to gain a new requirement
             self.generate_task(TASK_TYPE)
 
 

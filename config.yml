@@ -19,11 +19,12 @@ task_info_num: 4    # the properties number of a task
 compute_type_num: 5 # the categories number of compute workers
 filestore_info_num: 3 # the properties number of a filestore worker
 
+worker_rate: 0.2
 
 # Training
 
 batch_size: 512
-num_ep_train: 30 # number of episodes from all agents
+num_ep_train: 5 # number of episodes from all agents
 max_ep_length: 20000 # maximum number of steps per episode
 
 # Miscellaneous
@@ -31,3 +32,4 @@ max_ep_length: 20000 # maximum number of steps per episode
 results_path: results
 get_statistics: True
 print_statistics_per_slot: False
+debug_mode: 1

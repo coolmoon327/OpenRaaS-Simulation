@@ -30,9 +30,14 @@ class Area(object):
         self.devices: list[int] = []    # devices' IDs
         self.lines: list[Line] = []     # devices' lines with respect to self.devices
         
-        bw = max(3 + 2 * np.random.randn(1)[0], .5)*1000/8 # (1 ~ 10)/8 GBps
-        l = max(40 + 20 * np.random.randn(1)[0], 1.) # 1 ~ 19 ms
-        j = max(15 + 10 * np.random.randn(1)[0], 0) # 2 ~ 8
+        if id == 0:
+            bw = round(max(5000 + 1000 * np.random.randn(1)[0], 100.))/8 # (1 ~ 10)/8 GBps
+            l = max(40 + 20 * np.random.randn(1)[0], 1.)
+            j = max(15 + 10 * np.random.randn(1)[0], 0)
+        else:
+            bw = round(max(3000 + 2000 * np.random.randn(1)[0], 100.))/8 # (1 ~ 10)/8 GBps
+            l = max(10 + 3 * np.random.randn(1)[0], 1.) # 1 ~ 19 ms
+            j = max(5 + 2 * np.random.randn(1)[0], 0) # 2 ~ 8
         self.backbone = Line(bw, l, j)
     
     def clear(self):
@@ -74,6 +79,8 @@ class Topology(object):
         self.areas: list[Area] = [Area(i) for i in range(area_num)]
         self.device_to_area = {}    # key: device id, value: area id
         self.reset()
+        
+        self.debug_mode = False
     
     def clear(self):
         for area in self.areas:
@@ -184,10 +191,11 @@ class Topology(object):
             a1.backbone.bandwidth -= bw
             a2.backbone.bandwidth -= bw
 
-        if i1.bandwidth < n0 or i2.bandwidth < n0:
-            raise ValueError(f"Negative bandwidth ({i1.bandwidth}, {i2.bandwidth}) in interface.")
-        if a1.backbone.bandwidth < n0 or a2.backbone.bandwidth < n0:
-            raise ValueError(f"Negative bandwidth ({a1.bandwidth}, {a2.bandwidth}) in backbone.")
+        if self.debug_mode:
+            if i1.bandwidth < n0 or i2.bandwidth < n0:
+                raise ValueError(f"Negative bandwidth ({i1.bandwidth}, {i2.bandwidth}) in interface.")
+            if a1.backbone.bandwidth < n0 or a2.backbone.bandwidth < n0:
+                raise ValueError(f"Negative bandwidth ({a1.bandwidth}, {a2.bandwidth}) in backbone.")
         
     def release_bandwidth_between_devices(self, device1: Device, device2: Device, bw):
         return self.occupy_bandwidth_between_devices(device1, device2, -bw)

@@ -96,10 +96,19 @@ class Environment(object):
             self.devices.append(device)
             area_id = np.random.randint(1, self.topology.area_num) if server_area_id == 0 else -1
             self.topology.add_device(device, area_id)
+            
+            # change is_worker by config['worker_rate']
+            device.is_worker = True if np.random.randint(0, 100)/100 < self.config['worker_rate'] else False
+            
             if self.config['cloud_model'] == 0 and device.is_worker:
                 self.workers.append(device)
+            
 
-        self.topology.check_areas() # debug
+        if self.config['debug_mode']:
+            self.topology.debug_mode = True
+            self.topology.check_areas() # debug
+            for device in self.devices:
+                device.debug_mode = True
         
         # distribute layers & applications
         
@@ -191,11 +200,12 @@ class Environment(object):
     def next(self):
         M, N = self.M, self.N
         
-        # # severely influence the performance, comment it after finishing debugging!!!
-        # for device in self.workers:
-        #     err = device.check_error()
-        #     if err != 0:
-        #         raise ValueError(f"Error with tag {err} occurs in device {device.id}.")
+        if self.config['debug_mode']:
+            # severely influence the performance, comment it after finishing debugging!!!
+            for device in self.workers:
+                err = device.check_error()
+                if err != 0:
+                    raise ValueError(f"Error with tag {err} occurs in device {device.id}.")
         
         # 1. clear instant cache of the last slot
         self.new_tasks.clear() 
@@ -255,28 +265,36 @@ class Environment(object):
         target_c = -1
         minn = 1e6
         if task.bandwidth(0) <= client.bw:
+            workers = []
             if "center" not in self.cloud_model_type() and self.config['compute_at_edge']:
                 edge = self.topology.get_area_by_device(client)
                 eds = [self.devices[did] for did in edge.devices]
-                workers = []
                 for ed in eds:
                     if ed.is_worker:
+                        if "raas" not in self.cloud_model_type() and ed.id not in task.app.hosts:
+                            continue
                         workers.append(ed)
             else:
-                workers = self.workers  
+                for worker in self.workers:
+                    if "raas" not in self.cloud_model_type() and worker.id not in task.app.hosts:
+                        continue
+                    workers.append(worker)
             
             for device in workers:
                 if device.id == task.user_id or (not device.check_task_availability(0, task)):
                     continue
-                if "raas" not in self.cloud_model_type():
-                    if task.app not in device.apps:
-                        # the traditional models ask the compute worker to be the only provider
-                        continue
-                else:
-                    if task.mem > device.mem:
-                        # check_task_availability won't check storage tasks' mem for compute worker
-                        # but non-raas workers should have the availability
-                        continue
+                # if "raas" not in self.cloud_model_type():
+                #     if task.app not in device.apps:
+                #         # the traditional models ask the compute worker to be the only provider
+                #         continue
+                #     else:
+                #         if task.mem > device.mem:
+                #             # check_task_availability won't check storage tasks' mem for compute worker
+                #             # but non-raas workers should have the availability
+                #             continue
+                
+                if "raas" not in self.cloud_model_type() and task.mem > device.mem:
+                    continue
                 
                 if task.type == 2:
                     link_bw = self.topology.get_link_states_between_devices(client, device)[0]
@@ -284,9 +302,11 @@ class Environment(object):
                         continue
                 
                 s, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
-                total_latency = l + task.mem / (s+1e6) * 1000.
-                if total_latency < minn:
-                    minn = total_latency
+                # total_latency = l + task.mem / (s+1e6) * 1000.
+                # if total_latency < minn:
+                    # minn = total_latency
+                if -s < minn:
+                    minn = -s
                     target_c = device.id
         
         if target_c == -1:
@@ -307,14 +327,26 @@ class Environment(object):
         if "raas" in self.cloud_model_type():
             for fs_id in task.app.hosts:
                 device = self.devices[fs_id]
+                if device == client:
+                    if device.bw < task.bandwidth(0) + task.bandwidth(1):
+                        # client itself acts as the filestore worker
+                        continue
                 if device.check_task_availability(1, task):
                     if task.type == 2:
                         link_bw = self.topology.get_link_states_between_devices(compute, device)[0]
                         if link_bw < task.bandwidth(1):
                             continue
+                        compute_area = self.topology.get_area_by_device(compute)
+                        fs_area = self.topology.get_area_by_device(device)
+                        if compute_area != fs_area:
+                            if compute_area.backbone.bandwidth < task.bandwidth(0) + task.bandwidth(1):
+                                continue
                     avail_fs.append(fs_id)
         else:
             avail_fs.append(target_c)
+        
+        if len(avail_fs) == 0:
+            return dropped_state(task)
         
         # 4.2.2 calculate their priorities
         dict_p = {}
@@ -343,6 +375,7 @@ class Environment(object):
             task.set_provider(2, target_d)
             
             if target_d == -1:
+                # if none missing layer, won't get into this loop
                 return dropped_state(task)
         
         # 4.4 arrange the observation
