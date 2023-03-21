@@ -6,7 +6,10 @@ class SimulationAgent(object):
     def __init__(self, config, log_dir=''):
         self.config = config
         self.max_episodes = config["num_ep_train"]
-        self.max_steps = config['max_ep_length']
+        try:
+            self.max_steps = config['max_ep_length']
+        except:
+            self.max_steps = int(1e8)
         
         # Environment
         self.env_wrapper = EnvWrapper(config)
@@ -35,7 +38,10 @@ class SimulationAgent(object):
         for episode in range(self.max_episodes):
             state = env.reset()
             
+            slots = 0
             for step in range(self.max_steps):
+                if slots >= self.config['max_slot_per_ep']:
+                    break
                 task_info_num = config['task_info_num']
                 filestore_info_num = config['filestore_info_num']
                 candidates_num = config['candidates_num']
@@ -66,7 +72,10 @@ class SimulationAgent(object):
                     action = self.alg.get_action(compute_info[1], bws, ls, js)
                 
                 # 3. go into next step
-                state, reward, _ = env.step(action)
+                state, reward, new_slot = env.step(action)
+                
+                if new_slot :
+                    slots += 1
                 
                 # if step % 100 == 0:
                 #     print(f"E{episode}S{step}: reward={reward}")

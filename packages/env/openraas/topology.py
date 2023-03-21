@@ -31,13 +31,13 @@ class Area(object):
         self.lines: list[Line] = []     # devices' lines with respect to self.devices
         
         if id == 0:
-            bw = round(max(5000 + 1000 * np.random.randn(1)[0], 100.))/8 # (1 ~ 10)/8 GBps
-            l = max(40 + 20 * np.random.randn(1)[0], 1.)
-            j = max(15 + 10 * np.random.randn(1)[0], 0)
+            bw = round(max(5000 + 2000 * np.random.randn(1)[0], 100.))/8 # (1 ~ 10)/8 GBps
+            l = max(20 + 10 * np.random.randn(1)[0], 1.)
+            j = max(15 + 5 * np.random.randn(1)[0], 0)
         else:
             bw = round(max(3000 + 2000 * np.random.randn(1)[0], 100.))/8 # (1 ~ 10)/8 GBps
-            l = max(10 + 3 * np.random.randn(1)[0], 1.) # 1 ~ 19 ms
-            j = max(5 + 2 * np.random.randn(1)[0], 0) # 2 ~ 8
+            l = max(10 + 5 * np.random.randn(1)[0], 1.) # 1 ~ 19 ms
+            j = max(5 + 5 * np.random.randn(1)[0], 0) # 2 ~ 8
         self.backbone = Line(bw, l, j)
     
     def clear(self):

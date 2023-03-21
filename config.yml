@@ -1,10 +1,10 @@
 # Environment
 
-seed: 1112
+seed: 88
 
 M: 30     # number of edge servers
 N: 1000   # number of edge devices
-area_num: 10  # number of edge areas
+area_num: 5  # number of edge areas
 
 cloud_model: 0
 # 0: OpenRaaS
@@ -12,7 +12,7 @@ cloud_model: 0
 # 2: cloud-centric RaaS (microservice composition is as usual but only executed in the remote cloud area)
 # 3: traditional edge (only edge servers to provide services)
 # 4: edge RaaS (only edge servers act as OpenRaaS workers)
-compute_at_edge: True # unused in model 1 & 2
+compute_at_edge: 1 # unused in model 1 & 2
 
 candidates_num: 10  # shown filestore candidates number per task
 task_info_num: 4    # the properties number of a task
@@ -24,12 +24,14 @@ worker_rate: 0.2
 # Training
 
 batch_size: 512
-num_ep_train: 5 # number of episodes from all agents
-max_ep_length: 20000 # maximum number of steps per episode
+num_ep_train: 20 # number of episodes from all agents
+# max_ep_length: 10000 # maximum number of steps per episode
+max_slot_per_ep: 30
 
 # Miscellaneous
 
 results_path: results
 get_statistics: True
 print_statistics_per_slot: False
-debug_mode: 1
+debug_mode: 0
+log_pretext: change_N

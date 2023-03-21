@@ -369,7 +369,7 @@ class Device(object):
 class Server(Device):
     def __init__(self, id):
         cpu = 50.
-        mem = 3.2e6
+        mem = 1e6
         bw = 1e3/8
         isOpen = True
         isMobile = False
@@ -418,9 +418,9 @@ class Client(Device):
 
 class Desktop(Client):
     def __init__(self, id):
-        cpu = round(max(20 + 3 * np.random.randn(1)[0], 1.))      # 11 ~ 29
-        mem = round(max(30e3 + 3e3 * np.random.randn(1)[0], 1.))  # 21e3 ~ 39e3
-        bw = round(max(300 + 70 * np.random.randn(1)[0], 1.))/8   # (90 ~ 510)/8 MBps
+        cpu = round(max(20 + 5 * np.random.randn(1)[0], 5.))      # 11 ~ 29
+        mem = round(max(2e5 + 2e5 * np.random.randn(1)[0], 1e5))  # 21e3 ~ 39e3
+        bw = round(max(300 + 70 * np.random.randn(1)[0], 10.))/8   # (90 ~ 510)/8 MBps
         isOpen = np.random.randint(0,10) < 9            # 90% devices are open
         isMobile = False
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
@@ -431,9 +431,9 @@ class Desktop(Client):
 
 class MobileDevice(Client):
     def __init__(self, id):
-        cpu = round(max(5 + 1 * np.random.randn(1)[0], 1.))       # 2 ~ 8
-        mem = round(max(10e3 + 2e3 * np.random.randn(1)[0], 1.))  # 4e3 ~ 16e3
-        bw = round(max(300 + 70 * np.random.randn(1)[0], 1.))/8   # (90 ~ 510)/8 MBps
+        cpu = round(max(5 + 3 * np.random.randn(1)[0], 1.))       # 2 ~ 8
+        mem = round(max(3e4 + 3e4 * np.random.randn(1)[0], 1e4))  # 4e3 ~ 16e3
+        bw = round(max(300 + 70 * np.random.randn(1)[0], 10.))/8   # (90 ~ 510)/8 MBps
         isOpen = np.random.randint(0,10) < 3            # 30% devices are open
         isMobile = True
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
@@ -444,9 +444,9 @@ class MobileDevice(Client):
 
 class IoTDevice(Client):
     def __init__(self, id):
-        cpu = round(max(5 + 1 * np.random.randn(1)[0], 1.))       # 2 ~ 8
-        mem = round(max(5e3 + 1e3 * np.random.randn(1)[0], 1.))   # 2e3 ~ 8e3
-        bw = round(max(100 + 30 * np.random.randn(1)[0], 1.))/8   # (10 ~ 190)/8 MBps
+        cpu = round(max(5 + 3 * np.random.randn(1)[0], 1.))       # 2 ~ 8
+        mem = round(max(1e4 + 2e4 * np.random.randn(1)[0], 1e4))   # 2e3 ~ 8e3
+        bw = round(max(100 + 30 * np.random.randn(1)[0], 10.))/8   # (10 ~ 190)/8 MBps
         isOpen = np.random.randint(0,10) < 9            # 90% devices are open
         isMobile = np.random.randint(0,10) < 3          # 30% devices are mobile
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)

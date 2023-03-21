@@ -100,7 +100,8 @@ class Environment(object):
             # change is_worker by config['worker_rate']
             device.is_worker = True if np.random.randint(0, 100)/100 < self.config['worker_rate'] else False
             
-            if self.config['cloud_model'] == 0 and device.is_worker:
+            if self.cloud_model_type() == "openraas" and device.is_worker:
+                # only openraas allows a client to be a worker
                 self.workers.append(device)
             
 
@@ -118,7 +119,8 @@ class Environment(object):
             
             # 0. everyone can serve as the storage filestore
             for device in self.workers:
-                device.store_data(storage_app)
+                if not device.isMobile:
+                    device.store_data(storage_app)
             
             # 1. at least one server storing this data
             for List in [self.layerList, self.appList]:
@@ -137,11 +139,14 @@ class Environment(object):
                 
             # 2. every worker has the chance to store some arbitrary data
             for device in self.workers:
-                # a) average 3 data in a client worker
-                data_num = np.random.randint(1, 5)  
+                # a) average 5 data in a client worker
+                data_num = np.random.randint(1, 19)
                 for _ in range(data_num):
-                    # b) layer 80% or app 20%
-                    List = self.appList if np.random.randint(0, 10) < 2 else self.layerList
+                    if device.isMobile:
+                        List = self.layerList
+                    else:
+                        # b) layer 40% or app 60%
+                        List = self.appList if np.random.randint(0, 10) < 6 else self.layerList
                     # c) data
                     data = List.get_arbitrary_data()
                     ori = data.id
@@ -155,6 +160,7 @@ class Environment(object):
                         device.store_data(data)
         else:
             ### resource as a whole
+            # don not care mobile or not
             
             def add_all_layers_of_app(device: Device, app: Application):
                 totalsize = 0.
@@ -247,7 +253,9 @@ class Environment(object):
             i = M + j
             self.new_tasks += self.devices[i].new_tasks
         for task in self.new_tasks:
-            task.app = self.appList.get_data_by_id(task.app_id)
+            if task.app is None:
+                task.app = self.appList.get_arbitrary_data(task.type)
+            # task.app = self.appList.get_data_by_id(task.app_id)
         
         self.tasks_num = len(self.new_tasks)
         self.task_index = 0
@@ -270,15 +278,16 @@ class Environment(object):
                 edge = self.topology.get_area_by_device(client)
                 eds = [self.devices[did] for did in edge.devices]
                 for ed in eds:
-                    if ed.is_worker:
+                    if ed.is_worker and not ed.isMobile and ed.isOpen:
                         if "raas" not in self.cloud_model_type() and ed.id not in task.app.hosts:
                             continue
                         workers.append(ed)
             else:
                 for worker in self.workers:
-                    if "raas" not in self.cloud_model_type() and worker.id not in task.app.hosts:
-                        continue
-                    workers.append(worker)
+                    if not worker.isMobile and worker.isOpen:
+                        if "raas" not in self.cloud_model_type() and worker.id not in task.app.hosts:
+                            continue
+                        workers.append(worker)
             
             for device in workers:
                 if device.id == task.user_id or (not device.check_task_availability(0, task)):
@@ -302,11 +311,11 @@ class Environment(object):
                         continue
                 
                 s, l, _  = self.topology.get_link_states_between_devices_by_id(device.id, task.user_id)
-                # total_latency = l + task.mem / (s+1e6) * 1000.
-                # if total_latency < minn:
-                    # minn = total_latency
-                if -s < minn:
-                    minn = -s
+                total_latency = l + task.mem / (s+1e6) * 1000.
+                if total_latency < minn:
+                    minn = total_latency
+                # if -s < minn:
+                #     minn = -s
                     target_c = device.id
         
         if target_c == -1:
@@ -327,6 +336,9 @@ class Environment(object):
         if "raas" in self.cloud_model_type():
             for fs_id in task.app.hosts:
                 device = self.devices[fs_id]
+                # 23-3-17: we only store app in inmobile devices
+                # if device.isMobile:
+                #     continue
                 if device == client:
                     if device.bw < task.bandwidth(0) + task.bandwidth(1):
                         # client itself acts as the filestore worker
@@ -347,16 +359,19 @@ class Environment(object):
         
         if len(avail_fs) == 0:
             return dropped_state(task)
-        
-        # 4.2.2 calculate their priorities
-        dict_p = {}
-        for fs_id in avail_fs:
-            line = self.topology.get_device_interface_link_by_id(fs_id)
-            dict_p[fs_id] = line.bandwidth
-        
-        # 4.2.3 sort by priority and take the first 10 devices
-        dict_p = dict(sorted(dict_p.items(), key=lambda item: -item[1]))
-        self.fs_candidates = list(dict_p.keys()) if len(avail_fs) < 10 else list(dict_p.keys())[:10]
+        elif len(avail_fs) > 1:
+            # 4.2.2 calculate their priorities
+            dict_p = {}
+            for fs_id in avail_fs:
+                line = self.topology.get_device_interface_link_by_id(fs_id)
+                dict_p[fs_id] = line.bandwidth
+            
+            # 4.2.3 sort by priority and take the first 10 devices
+            dict_p = dict(sorted(dict_p.items(), key=lambda item: -item[1]))
+            self.fs_candidates = list(dict_p.keys()) if len(avail_fs) < 10 else list(dict_p.keys())[:10]
+        else:
+            # only one avail_fs
+            self.fs_candidates = avail_fs
         
         # 4.3 find devicces with the target layers as depository candidates
         compute_link = self.topology.get_device_interface_link(compute)

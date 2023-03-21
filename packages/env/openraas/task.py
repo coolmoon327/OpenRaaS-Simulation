@@ -23,8 +23,8 @@ class Task(object):
         self.reset()
     
     def reset(self):
-        self.app_id = np.random.randint(0, ApplicationList.app_num)
-        self.app: Application   # inital in the Environment.next()
+        # self.app_id = -1 # np.random.randint(0, ApplicationList.app_num)
+        self.app: Application = None  # inital in the Environment.next()
         self.providers = [-1, -1, []]
         self.life_time = self.span  # the rest time slot it can survive on the cloud
     
@@ -108,12 +108,10 @@ class Task(object):
             index = self.missing_layers.index(image_id)
         return self.providers[2][index]
 
-# TODO: 修改 cpu 参数!!!
-
 class ProcessTask(Task):
     def __init__(self,  user_id=-1):
-        cpu = max(5 + 10 * np.random.randn(1)[0], .1)       # 5
-        mem = 5 # max(5 + 1 * np.random.randn(1)[0], 0.)       # 2 ~ 8
+        cpu = max(5 + 5 * np.random.randn(1)[0], .1)       # 5
+        mem = 5 # max(5 + 1 * np.random.randn(1)[0], 0.) 
         super().__init__(0, cpu, mem, user_id)
         self.set_QoS_weight()
 
@@ -124,12 +122,12 @@ class StorageTask(Task):
         this task should give its storing time span
         different from others, its memory size will affect the filestore worker instead of the compute worker
         '''
-        span = round(max(20 + 5 * np.random.randn(1)[0], 1.))        # 5 ~ 35 time slots (2h ~ 8h) existing on the cloud drive
+        span = round(max(5 + 10 * np.random.randn(1)[0], 1.))        # 5 time slots existing on the cloud drive
         # span = 1
-        file_num = int(max(20 + 5 * np.random.randn(1)[0], 1.))          # files
+        file_num = int(max(3 + 6 * np.random.randn(1)[0], 1.))          # 3 files
         mem = 0.
         for i in range(file_num):
-            mem += max(1000 + 300 * np.random.randn(1)[0], 100.)       # MB per file
+            mem += max(500 + 2000 * np.random.randn(1)[0], 10.)       # MB per file
         super().__init__(1, 0., mem, user_id, span)
         self.set_QoS_weight()
 
