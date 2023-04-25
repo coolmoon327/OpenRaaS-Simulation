@@ -51,7 +51,7 @@ def test_openraas(config):
     
     configs = []
     
-    if 1:
+    if 0:
         if config['debug_mode']:
             step = 200
         else:
@@ -67,11 +67,11 @@ def test_openraas(config):
                 config['cloud_model'] = cloud_model
                 configs.append(copy.deepcopy(config))
     
-    if 0:
+    if 1:
         # 2. change worker_rate
         config['log_pretext'] = 'change_worker_rate'
         config['cloud_model'] = 0
-        for N in range(200, 1501, 400):
+        for N in range(100, 1501, 300):
             config['N'] = N
             for x in range(0, 11, 1):
                 config['worker_rate'] = x*1./10.

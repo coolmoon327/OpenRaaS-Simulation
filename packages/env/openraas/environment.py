@@ -456,7 +456,7 @@ class Environment(object):
                 # storage: forward
                 speed = min(uc_speed, cf_speed)
                 jilter = uc_jilter + cf_jilter
-                service_latency = cf_latency + uc_latency
+                service_latency = cf_latency + uc_latency + task.mem / (speed+1e6) * 1000.
             else:
                 speed = uc_speed
                 jilter = uc_jilter

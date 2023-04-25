@@ -10,25 +10,25 @@ Global Master: a centralized server with abundant computation & storage ability
 
 Edge servers: edge devices serve as cloud service providers
 
-- Server: 50 GF, 3.2 TB, 1 Gbps (each), open, fixed
+- Server: 50 GF, 1 TB, 1 Gbps (each), open, fixed
 
 End-users: they can voluntarily beacome worker nodes when they are clients of OpenRaaS
 
-- Desktop: 20 GF, 30 GB, 300 Mbps (average), open & closed, fixed
-- Mobile device: 5 GF, 10 GB, 300 Mbps (average), closed, unstable
-- IoT device: 5 GF, 5 GB, 100 Mbps (average), open, fixed & unstable
+- Desktop: 20 GF, 200 GB, 300 Mbps (average), open & closed, fixed
+- Mobile device: 5 GF, 30 GB, 300 Mbps (average), closed, unstable
+- IoT device: 5 GF, 10 GB, 100 Mbps (average), open, fixed & unstable
 
 ### Tasks
 
 Processing service:
 
-- 20 GF, 5 MB uploads, 3 layers (core os 100 MB, drivers 200 MB, library 100 MB), application 500 MB
+- 5 GF, 5 MB uploads, 3 layers (core os 100 MB, drivers 200 MB, library 100 MB), application 500 MB
 
 - Every APP data is replicated to multiple devices, at least one is on an edge server, as is the image layer.
 
 Storage service:
 
-- -, 4 files (50 MB each) uploads, 4 fixed layers (core os 100 MB, drivers 50 MB, library 50 MB, execution 10 MB)
+- -, 3 files (500 MB each) uploads, 4 fixed layers (core os 100 MB, drivers 50 MB, library 50 MB, execution 10 MB)
 
 - The execution workload is low and can be ignored.
 
@@ -70,7 +70,7 @@ Application:
 
 Task generation:
 
-- Each client has 20% probability to require cloud services
+- Each client has 100% probability to require cloud services in a slot
 - If unspecified, those task types has the same chance to be chosen
 
 Task execution:

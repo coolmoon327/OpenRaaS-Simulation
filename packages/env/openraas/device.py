@@ -3,7 +3,7 @@ from .task import *
 from .app import *
 import math
 
-TASK_TYPE = 2
+TASK_TYPE = 0
 
 
 class Device(object):
