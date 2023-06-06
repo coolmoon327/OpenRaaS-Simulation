@@ -6,12 +6,13 @@ M: 30     # number of edge servers
 N: 1000   # number of edge devices
 area_num: 5  # number of edge areas
 
-cloud_model: 0
+cloud_model: 5
 # 0: OpenRaaS
 # 1: traditional cloud-centric (use an area as remote cloud where only servers are deployed)
 # 2: cloud-centric RaaS (microservice composition is as usual but only executed in the remote cloud area)
 # 3: traditional edge (only edge servers to provide services)
 # 4: edge RaaS (only edge servers act as OpenRaaS workers)
+# 5: edge with cache (only edge servers to provide services. if unavailable, then cache a copy in the edge for future requirements)
 compute_at_edge: 1 # unused in model 1 & 2
 
 candidates_num: 10  # shown filestore candidates number per task
@@ -33,5 +34,5 @@ max_slot_per_ep: 30
 results_path: results
 get_statistics: True
 print_statistics_per_slot: False
-debug_mode: 0
+debug_mode: 1
 log_pretext: change_N

@@ -7,6 +7,24 @@ from .task import *
 from .topology import *
 from gym import spaces
 
+def add_all_layers_of_app(device: Device, app: Application):
+    totalsize = 0.
+    if app not in device.apps:
+        totalsize += app.size
+    missing_layers = []
+    for layer in app.env_layers:
+        if layer not in device.layers:
+            totalsize += layer.size
+            missing_layers.append(layer)
+        
+    if totalsize <= device.mem:
+        if app not in device.apps:
+            device.store_data(app)
+        for layer in missing_layers:
+            device.store_data(layer)
+        return True
+    return False
+
 class Environment(object):
     def __init__(self, config={}):
         self.devices: list[Device] = []       # first M devices are servers -> self.devices[0:M]
@@ -162,24 +180,6 @@ class Environment(object):
             ### resource as a whole
             # don not care mobile or not
             
-            def add_all_layers_of_app(device: Device, app: Application):
-                totalsize = 0.
-                if app not in device.apps:
-                    totalsize += app.size
-                missing_layers = []
-                for layer in app.env_layers:
-                    if layer not in device.layers:
-                        totalsize += layer.size
-                        missing_layers.append(layer)
-                    
-                if totalsize <= worker.mem:
-                    if app not in device.apps:
-                        device.store_data(app)
-                    for layer in missing_layers:
-                        device.store_data(layer)
-                    return True
-                return False
-            
             List = self.appList
             for app in List.get_list():
                 if app == storage_app:
@@ -272,22 +272,30 @@ class Environment(object):
         # 4.1 find the closest worker as compute candidates
         target_c = -1
         minn = 1e6
-        if task.bandwidth(0) <= client.bw:
+        if task.bandwidth(0) <= client.bw:  # 这其实会导致 open 的丢弃率变高
             workers = []
+            edge = self.topology.get_area_by_device(client)
+            eds = [self.devices[did] for did in edge.devices]
             if "center" not in self.cloud_model_type() and self.config['compute_at_edge']:
-                edge = self.topology.get_area_by_device(client)
-                eds = [self.devices[did] for did in edge.devices]
+                # 仅从边缘提供计算服务
                 for ed in eds:
                     if ed.is_worker and not ed.isMobile and ed.isOpen:
                         if "raas" not in self.cloud_model_type() and ed.id not in task.app.hosts:
                             continue
                         workers.append(ed)
             else:
+                # 计算服务可以来自任何地方
                 for worker in self.workers:
                     if not worker.isMobile and worker.isOpen:
                         if "raas" not in self.cloud_model_type() and worker.id not in task.app.hosts:
                             continue
                         workers.append(worker)
+            
+            if workers.__len__() == 0 and "cache" in self.cloud_model_type():
+                # 遇到没有的服务，拒绝该请求，但会下载到该边缘的某个设备上
+                for ed in eds:
+                    if add_all_layers_of_app(ed, task.app):
+                        break
             
             for device in workers:
                 if device.id == task.user_id or (not device.check_task_availability(0, task)):
@@ -537,3 +545,5 @@ class Environment(object):
             return "edge"
         elif cm == 4:
             return "edge raas"
+        elif cm == 5:
+            return "edge cache"
