@@ -1,6 +1,6 @@
 # Environment
 
-seed: 88
+seed: 888
 
 M: 30     # number of edge servers
 N: 1000   # number of edge devices
@@ -14,6 +14,8 @@ cloud_model: 5
 # 4: edge RaaS (only edge servers act as OpenRaaS workers)
 # 5: edge with cache (only edge servers to provide services. if unavailable, then cache a copy in the edge for future requirements)
 compute_at_edge: 1 # unused in model 1 & 2
+raas_cache: 0 # in raas model, missing apps will be cached on filestore worker nodes
+public_data_deduplication: 1 # for task_type 1 only, if find a task with public tag and there is already one copy existing in the edge, directly seem as finished
 
 candidates_num: 10  # shown filestore candidates number per task
 task_info_num: 4    # the properties number of a task
@@ -21,18 +23,25 @@ compute_type_num: 5 # the categories number of compute workers
 filestore_info_num: 3 # the properties number of a filestore worker
 
 worker_rate: 0.2
+public_data_rate: 0.4 # the top ? percent of the 100 files are public
+
+task_type: 1
+# -1: all (random)
+# 0: process
+# 1: storage
+# 2: desktop
 
 # Training
 
 batch_size: 512
 num_ep_train: 20 # number of episodes from all agents
 # max_ep_length: 10000 # maximum number of steps per episode
-max_slot_per_ep: 30
+max_slot_per_ep: 100
 
 # Miscellaneous
 
 results_path: results
 get_statistics: True
-print_statistics_per_slot: False
-debug_mode: 1
+print_statistics_per_slot: 0
+debug_mode: 0
 log_pretext: change_N

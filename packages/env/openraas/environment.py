@@ -1,5 +1,6 @@
 # alpha v0.2
 
+import traceback
 import numpy as np
 from .device import *
 from .app import *
@@ -54,6 +55,8 @@ class Environment(object):
             self.compute_type_num = config['compute_type_num']
             self.filestore_info_num = config['filestore_info_num']
             self.topology = Topology(config['area_num'])
+            if 'center' in self.cloud_model_type():
+                self.topology.set_cloud()
         except:
             raise KeyError("Cannot find environment keys in config dict.")
         
@@ -79,6 +82,8 @@ class Environment(object):
         state = self.get_state()
         while self.new_tasks[self.task_index].dropped:
             self.task_index += 1
+            if self.task_index >= self.tasks_num:
+                self.next()
             state = self.get_state()
         return state
     
@@ -111,6 +116,7 @@ class Environment(object):
                 device = MobileDevice(i)
             else:
                 device = IoTDevice(i)
+            device.task_type = self.config['task_type']
             self.devices.append(device)
             area_id = np.random.randint(1, self.topology.area_num) if server_area_id == 0 else -1
             self.topology.add_device(device, area_id)
@@ -157,7 +163,7 @@ class Environment(object):
                 
             # 2. every worker has the chance to store some arbitrary data
             for device in self.workers:
-                # a) average 5 data in a client worker
+                # a) average 10 data in a worker
                 data_num = np.random.randint(1, 19)
                 for _ in range(data_num):
                     if device.isMobile:
@@ -180,28 +186,46 @@ class Environment(object):
             ### resource as a whole
             # don not care mobile or not
             
+            # 1. at least one server storing this data
             List = self.appList
             for app in List.get_list():
                 if app == storage_app:
-                    for worker in self.workers:
-                        add_all_layers_of_app(worker, storage_app)
                     continue
                 
-                worker_num = max(int(1 + 10 * np.random.randn(1)[0]), 1)
-                for _ in range(worker_num):
-                    ori = np.random.randint(0, M)
-                    index = ori
+                ori = np.random.randint(0, M)
+                index = ori
+                worker = self.workers[index]
+                while True:
+                    if app not in worker.apps:
+                        if add_all_layers_of_app(worker, app):
+                            break
+                    index = index+1 if index < M-1 else 0
                     worker = self.workers[index]
+                    if index == ori:
+                        break
+            
+            # 2. every worker has the chance to store some arbitrary data
+            for device in self.workers:
+                add_all_layers_of_app(device, storage_app)
+                
+                # a) average 10 data in a worker
+                data_num = np.random.randint(1, 19)
+                for _ in range(data_num):
+                    app = List.get_arbitrary_data()
+                    ori = app.id
                     while True:
                         if app not in worker.apps:
-                            ret = add_all_layers_of_app(worker, app)
-                            if ret:
+                            if add_all_layers_of_app(worker, app):
                                 break
-                        
-                        index = index+1 if index < M-1 else 0
-                        worker = self.workers[index]
-                        if index == ori:
+                        app = List.get_next_data(app)
+                        if app.id == ori:
                             break
+        
+        # debug
+        app_num = 0
+        for app in self.appList.get_list():
+            app_num += len(app.hosts)
+        print(self.cloud_model_type(), "app_num", app_num)
     
     def next(self):
         M, N = self.M, self.N
@@ -266,7 +290,9 @@ class Environment(object):
             task.dropped = True
             return [-1. for _ in range(self.state_len)]
         self.fs_candidates = []
-        task = self.new_tasks[self.task_index]
+        task = self.new_tasks[self.task_index]  
+        # 这里曾有超出 list range 的 bug，分析结果为 reset 时第一个 slot 内的任务被全部丢弃了
+        # TODO: 丢弃率太高也是个问题，需要解决，目测和 edge 的 server_mem_rate 很低有关
         client = self.devices[task.user_id]
         
         # 4.1 find the closest worker as compute candidates
@@ -291,11 +317,13 @@ class Environment(object):
                             continue
                         workers.append(worker)
             
-            if workers.__len__() == 0 and "cache" in self.cloud_model_type():
-                # 遇到没有的服务，拒绝该请求，但会下载到该边缘的某个设备上
-                for ed in eds:
-                    if add_all_layers_of_app(ed, task.app):
-                        break
+            if workers.__len__() == 0:
+                if "cache" in self.cloud_model_type():
+                    # 遇到没有的服务，拒绝该请求，但会下载到该边缘的某个设备上
+                    for ed in eds:
+                        if add_all_layers_of_app(ed, task.app):
+                            break
+                return dropped_state(task)
             
             for device in workers:
                 if device.id == task.user_id or (not device.check_task_availability(0, task)):
@@ -341,12 +369,31 @@ class Environment(object):
         # 4.2.1 finds all available devices
         avail_fs = []
         
+        if task.type == 1 and self.config['public_data_deduplication'] and 'raas' in self.cloud_model_type():
+            # 对于 public 的存储文件进行处理
+            ds = self.workers if 'open' in self.cloud_model_type() else eds
+            for i in reversed(range(len(task.files_id))):
+                fid = task.files_id[i]
+                if fid < 100 * self.config['public_data_rate']:
+                    for d in ds:
+                        if fid in d.caching_files_id:
+                            task.mem -= task.files_mem[i]
+                            del task.files_id[i]
+                            del task.files_mem[i]
+                            break
+        
         if "raas" in self.cloud_model_type():
             for fs_id in task.app.hosts:
+                if "edge" in self.cloud_model_type() and fs_id not in eds:
+                    # edge raas 只能在一个区域内进行组合
+                    # center raas 默认 servers 只在 area 0，所以这里不用特殊判断
+                    continue
+                
                 device = self.devices[fs_id]
                 # 23-3-17: we only store app in inmobile devices
                 # if device.isMobile:
                 #     continue
+                
                 if device == client:
                     if device.bw < task.bandwidth(0) + task.bandwidth(1):
                         # client itself acts as the filestore worker
@@ -366,6 +413,13 @@ class Environment(object):
             avail_fs.append(target_c)
         
         if len(avail_fs) == 0:
+            if "raas" in self.cloud_model_type() and self.config['raas_cache']:
+                # 下载 missing app 到某个 filestore
+                for worker in self.workers:
+                    if not worker.isMobile:
+                        if task.app not in worker.apps and task.app.size <= worker.mem:
+                            worker.store_data(task.app)
+                            break
             return dropped_state(task)
         elif len(avail_fs) > 1:
             # 4.2.2 calculate their priorities
@@ -464,7 +518,7 @@ class Environment(object):
                 # storage: forward
                 speed = min(uc_speed, cf_speed)
                 jilter = uc_jilter + cf_jilter
-                service_latency = cf_latency + uc_latency + task.mem / (speed+1e6) * 1000.
+                service_latency = cf_latency + uc_latency + task.mem / (speed+1e-6) * 1000.
             else:
                 speed = uc_speed
                 jilter = uc_jilter
@@ -524,7 +578,7 @@ class Environment(object):
         while is_dropped:
             self.task_index += 1
             # enter next step and gain new states
-            if self.task_index == self.tasks_num:
+            if self.task_index >= self.tasks_num:
                 new_slot = True
                 self.next()
             

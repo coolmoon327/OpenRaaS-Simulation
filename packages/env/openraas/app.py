@@ -202,7 +202,7 @@ class ApplicationList(object):
     def init_apps(self):
         index = 0
         # processing
-        for _ in range(30):
+        for _ in range(50):
             app = Application(index, 500., 10)
             osl = self.layerList.get_list(0)[np.random.randint(0,3)]
             dl = self.layerList.get_list(1)[np.random.randint(1,5)]
@@ -221,8 +221,8 @@ class ApplicationList(object):
         self.storage_apps.append(app)
         index += 1
         # desktop
-        for _ in range(20):
-            size = max(5000 + 1000 * np.random.randn(1)[0], 1.)     # 2000 ~ 8000 MB
+        for _ in range(100):
+            size = max(20000 + 4000 * np.random.randn(1)[0], 1.)
             app = Application(index, size, 12)
             osl = self.layerList.get_list(0)[1]
             dl = self.layerList.get_list(1)[1]

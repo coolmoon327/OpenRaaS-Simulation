@@ -77,7 +77,7 @@ class EnvWrapper:
             # self.episode_server_occupation.append(self.server_occupation)
             
             if self.config['print_statistics_per_slot']:
-                print(f"Serverd percent: {self.served_percent}, average worker occupation: {self.worker_occupation}")
+                print(f"Serverd percent: {self.served_percent}, uesd resource of server: {self.uesd_resource_server}")
             
         env = self.env
         M = self.config['M']

@@ -3,9 +3,6 @@ from .task import *
 from .app import *
 import math
 
-TASK_TYPE = 0
-
-
 class Device(object):
     def __init__(self, id, cpu, mem, bw, isOpen, isMobile):
         self.id = id                # Identification number, should be unique
@@ -17,6 +14,8 @@ class Device(object):
         self.timers = []    # timers of stored container layers
         self.default_timer = 5  # servers' timer is -1 so that they won't release layers
         self.apps: list[Application] = []      # tored app data
+        
+        self.caching_files_id = []
         
         self.req_tasks: list[ProcessTask] = [] # only used when it is a client
         self.new_tasks: list[ProcessTask] = []
@@ -42,6 +41,8 @@ class Device(object):
         self.bw = self.capacity[2]              # bandwidth: MegaBytes
                                                 # the remaining bandwidth only be considered in a desktop application scenario
                                                 # other services only occupy network links for several seconds, which should be taken as the startup delay
+        
+        self.caching_files_id.clear()
         
         self.cal_tasks.clear()
         self.metaos_tasks.clear()
@@ -223,6 +224,8 @@ class Device(object):
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
                 self.mem -= task.mem
+                for fid in task.files_id:
+                    self.caching_files_id.append(fid)
 
         elif microservice_type == 2:
             for i in range(len(self.layers)):
@@ -252,6 +255,8 @@ class Device(object):
             if task.type == 1:
                 # in a storage task, filestore worker is used to contain user upload data
                 self.mem += task.mem
+                for fid in task.files_id:
+                    self.caching_files_id.remove(fid)
         # elif microservice_type == 2:
         #     pass
     
@@ -385,8 +390,10 @@ class Client(Device):
         super().__init__(id, cpu, mem, bw, isOpen, isMobile)
         self.is_worker = True if np.random.randint(0, 10) < 2 else False    # 20% to be a worker    # change in environment.py
         self.is_client = True
+        self.task_type = -1
     
-    def generate_task(self, task_type=-1):
+    def generate_task(self):
+        task_type = self.task_type
         if task_type == -1:
             r = np.random.randint(0,100)    # 1:6:3
             if r < 10:
@@ -395,7 +402,6 @@ class Client(Device):
                 task_type = 1
             else:
                 task_type = 2
-            
         if task_type == 0:
             task = ProcessTask(self.id)
         elif task_type == 1:
@@ -413,7 +419,7 @@ class Client(Device):
         # generate new tasks
         self.new_tasks.clear()
         if np.random.randint(0,10) < 10:     # 100% chance to gain a new requirement
-            self.generate_task(TASK_TYPE)
+            self.generate_task()
 
 
 class Desktop(Client):

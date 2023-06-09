@@ -122,12 +122,21 @@ class StorageTask(Task):
         this task should give its storing time span
         different from others, its memory size will affect the filestore worker instead of the compute worker
         '''
-        span = round(max(5 + 10 * np.random.randn(1)[0], 1.))        # 5 time slots existing on the cloud drive
+        self.files_mem = []
+        self.files_id = []
+        span = round(max(5 + 2 * np.random.randn(1)[0], 1.))        # 5 time slots existing on the cloud drive
         # span = 1
-        file_num = int(max(3 + 6 * np.random.randn(1)[0], 1.))          # 3 files
+        file_num = int(max(10 + 3 * np.random.randn(1)[0], 1.))          # 10 files
         mem = 0.
         for i in range(file_num):
-            mem += max(500 + 2000 * np.random.randn(1)[0], 10.)       # MB per file
+            # file_mem = max(500 + 2000 * np.random.randn(1)[0], 10.)       # MB per file
+            file_mem = 500
+            file_id = np.random.randint(0, 99)
+            while file_id in self.files_id: # 不重复
+                file_id += 1
+            self.files_id.append(file_id)
+            self.files_mem.append(file_mem)
+            mem += file_mem
         super().__init__(1, 0., mem, user_id, span)
         self.set_QoS_weight()
 

@@ -36,6 +36,7 @@ class Logger(object):
             scalar_dict (dict): {'sub_tag':value}
             step (int): update step
         """
+        print(tag, scalar_dict, step)
         self.writer.add_scalars(tag, scalar_dict, step)
 
     def close(self):

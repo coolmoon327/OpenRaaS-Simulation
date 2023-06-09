@@ -28,15 +28,17 @@ Processing service:
 
 Storage service:
 
-- -, 3 files (500 MB each) uploads, 4 fixed layers (core os 100 MB, drivers 50 MB, library 50 MB, execution 10 MB)
+- -, 10 files (500 MB each) uploads, 4 fixed layers (core os 100 MB, drivers 50 MB, library 50 MB, execution 10 MB)
 
 - The execution workload is low and can be ignored.
 
 - The compute worker only forwards the files to the filestore worker, but it should download the image layers.
 
+- There are totally 100 kinds of files, and 40% of them are public files
+
 Cloud desktop service:
 
-- 5 GF, 100 Mbps downloads, 4 layers (core os 100 MB, drivers 200 MB, library 200 MB, compatible layer 500 MB), application 5 GB
+- 5 GF, 100 Mbps downloads, 4 layers (core os 100 MB, drivers 200 MB, library 200 MB, compatible layer 500 MB), application 20 GB
 
 - A task may occupy resources for several slots, which means we should consider the bandwidth in this scenario.
 

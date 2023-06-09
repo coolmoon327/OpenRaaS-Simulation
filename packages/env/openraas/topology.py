@@ -30,14 +30,10 @@ class Area(object):
         self.devices: list[int] = []    # devices' IDs
         self.lines: list[Line] = []     # devices' lines with respect to self.devices
         
-        if id == 0:
-            bw = round(max(5000 + 2000 * np.random.randn(1)[0], 100.))/8 
-            l = max(10 + 5 * np.random.randn(1)[0], 1.)
-            j = max(5 + 5 * np.random.randn(1)[0], 0)
-        else:
-            bw = round(max(3000 + 2000 * np.random.randn(1)[0], 100.))/8 # (1 ~ 10)/8 GBps
-            l = max(10 + 5 * np.random.randn(1)[0], 1.) # 1 ~ 19 ms
-            j = max(5 + 5 * np.random.randn(1)[0], 0) # 2 ~ 8
+        bw = round(max(1000 + 300 * np.random.randn(1)[0], 100.))/8 # 1000/8 MBps
+        l = max(10 + 5 * np.random.randn(1)[0], 1.) # 1 ~ 19 ms
+        j = max(5 + 5 * np.random.randn(1)[0], 0) # 2 ~ 8
+        
         self.backbone = Line(bw, l, j)
     
     def clear(self):
@@ -94,6 +90,13 @@ class Topology(object):
     def step(self):
         for area in self.areas:
             area.step()
+    
+    def set_cloud(self):
+        # 设置 0 号区域为 cloud
+        bw = round(max(10000 + 2000 * np.random.randn(1)[0], 100.))/8 
+        l = max(10 + 10 * np.random.randn(1)[0], 1.)
+        j = max(5 + 10 * np.random.randn(1)[0], 0)
+        self.areas[0].backbone = Line(bw, l, j)
     
     def get_area_by_device_id(self, device_id: int):
         return self.areas[self.device_to_area[device_id]]
