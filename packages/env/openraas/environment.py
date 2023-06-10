@@ -101,14 +101,14 @@ class Environment(object):
         
         # generate devices
         self.devices.clear()
-        server_area_id = 0 if self.config['cloud_model'] == 1 or self.config['cloud_model'] == 2 else -1
+        server_area_id = 0 if 'center' in self.cloud_model_type() else -1
         for i in range(M):
             device = Server(i)
             self.devices.append(device)
             self.topology.add_device(device, server_area_id)
             self.workers.append(device) # all servers are workers
         for j in range(N):
-            i = self.M + j
+            i = M + j
             r = np.random.rand(0,3)
             if r == 0:
                 device = Desktop(i)
@@ -159,29 +159,27 @@ class Environment(object):
                         if index == ori:
                             # all M servers cannot store it, set error flag
                             raise ValueError(f"Data with id {data.id} cannot be stored in any a server!")
-                    self.devices[index].store_data(data)    # host_id is appended in this method. if not, check it
+                    self.workers[index].store_data(data)    # host_id is appended in this method. if not, check it
                 
             # 2. every worker has the chance to store some arbitrary data
             for device in self.workers:
                 # a) average 10 data in a worker
-                data_num = np.random.randint(1, 19)
-                for _ in range(data_num):
-                    if device.isMobile:
-                        List = self.layerList
-                    else:
-                        # b) layer 40% or app 60%
-                        List = self.appList if np.random.randint(0, 10) < 6 else self.layerList
-                    # c) data
-                    data = List.get_arbitrary_data()
-                    ori = data.id
-                    avai_flag = True
-                    while (device.id in data.hosts) or (not device.is_enough_for_storing(data)):
-                        data = List.get_next_data(data)
-                        if data.id == ori:
-                            avai_flag = False
-                            break
-                    if avai_flag:
-                        device.store_data(data)
+                for List in [self.layerList, self.appList]:
+                    if device.isMobile and List == self.appList:
+                        continue
+                    data_num = np.random.randint(1, 19)
+                    for _ in range(data_num):   
+                        # c) data
+                        data = List.get_arbitrary_data()
+                        ori = data.id
+                        avai_flag = True
+                        while (device.id in data.hosts) or (not device.is_enough_for_storing(data)):
+                            data = List.get_next_data(data)
+                            if data.id == ori:
+                                avai_flag = False
+                                break
+                        if avai_flag:
+                            device.store_data(data)
         else:
             ### resource as a whole
             # don not care mobile or not
@@ -196,9 +194,8 @@ class Environment(object):
                 index = ori
                 worker = self.workers[index]
                 while True:
-                    if app not in worker.apps:
-                        if add_all_layers_of_app(worker, app):
-                            break
+                    if add_all_layers_of_app(worker, app):
+                        break
                     index = index+1 if index < M-1 else 0
                     worker = self.workers[index]
                     if index == ori:
@@ -214,18 +211,19 @@ class Environment(object):
                     app = List.get_arbitrary_data()
                     ori = app.id
                     while True:
-                        if app not in worker.apps:
-                            if add_all_layers_of_app(worker, app):
+                        if device.id not in app.hosts:
+                            if add_all_layers_of_app(device, app):
                                 break
                         app = List.get_next_data(app)
                         if app.id == ori:
                             break
         
-        # debug
-        app_num = 0
-        for app in self.appList.get_list():
-            app_num += len(app.hosts)
-        print(self.cloud_model_type(), "app_num", app_num)
+        if self.config['debug_mode']:
+            # debug
+            app_num = 0
+            for d in self.devices[0:M]:
+                app_num += len(d.apps)
+            print(self.cloud_model_type(), "app_num (server)", app_num)
     
     def next(self):
         M, N = self.M, self.N
@@ -363,7 +361,8 @@ class Environment(object):
         task.missing_layers = compute.find_missing_layers(task)
         
         if "raas" not in self.cloud_model_type() and len(task.missing_layers):
-            raise ValueError(f"Cloud model {self.cloud_model_type()} chosed a wrong compute worker {compute.id} lack of {len(task.missing_layers)} layers.")
+            print(f"Missing {[task.missing_layers[i].id for i in range(len(task.missing_layers))]}, while having {[compute.layers[i].id for i in range(len(compute.layers))]}")
+            raise ValueError(f"Cloud model {self.cloud_model_type()} chose a wrong compute worker {compute.id} lack of {len(task.missing_layers)} layers.")
         
         # 4.2 find devices with the target application as filestore candidates (return 10 candidates)
         # 4.2.1 finds all available devices
@@ -384,12 +383,13 @@ class Environment(object):
         
         if "raas" in self.cloud_model_type():
             for fs_id in task.app.hosts:
-                if "edge" in self.cloud_model_type() and fs_id not in eds:
+                device = self.devices[fs_id]
+                
+                if "edge" in self.cloud_model_type() and device not in eds:
                     # edge raas 只能在一个区域内进行组合
                     # center raas 默认 servers 只在 area 0，所以这里不用特殊判断
                     continue
                 
-                device = self.devices[fs_id]
                 # 23-3-17: we only store app in inmobile devices
                 # if device.isMobile:
                 #     continue

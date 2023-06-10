@@ -43,5 +43,5 @@ max_slot_per_ep: 100
 results_path: results
 get_statistics: True
 print_statistics_per_slot: 0
-debug_mode: 0
+debug_mode: 1
 log_pretext: change_N

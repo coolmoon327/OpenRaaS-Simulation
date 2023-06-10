@@ -76,12 +76,12 @@ def callback_error(error):
     with open('error_log.txt', 'w') as f:
         f.write(time.ctime() + ':' + str(error) + '\n')
 
-def test_openraas(config):
+def test_openraas(conf):
     pool = mp.Pool(32)
     
     configs = []
     
-    if config['debug_mode']:
+    if conf['debug_mode']:
         stepN = 300
         stepWR = 400
     else:
@@ -90,6 +90,7 @@ def test_openraas(config):
     
     if 1:
         # 1. change N desktop
+        config = copy.deepcopy(conf)
         config['task_type'] = 2
         config['log_pretext'] = 'change_N_' + str(config['task_type'])
         # for N in range(1000, 20001, 1000):
@@ -103,6 +104,7 @@ def test_openraas(config):
     
     if 1:
         # 2. change worker_rate process
+        config = copy.deepcopy(conf)
         config['task_type'] = 0
         config['log_pretext'] = 'change_worker_rate_' + str(config['task_type'])
         config['cloud_model'] = 0
@@ -114,6 +116,7 @@ def test_openraas(config):
     
     if 1:
         # 2. change N storage
+        config = copy.deepcopy(conf)
         config['task_type'] = 1
         config['log_pretext'] = 'change_N_' + str(config['task_type'])
         for N in range(100, 1501, stepN):
@@ -136,7 +139,7 @@ def test_openraas(config):
 
 def debug(config):
     config['log_pretext'] = 'change_N'
-    for cloud_model in [0, 1, 3]:
+    for cloud_model in [4]:
         # cloud_model = 0
         config['cloud_model'] = cloud_model
         for N in range(100, 1000, 100):
