@@ -1,6 +1,6 @@
 # Environment
 
-seed: 888
+seed: 8888
 
 M: 30     # number of edge servers
 N: 1000   # number of edge devices
@@ -22,7 +22,7 @@ task_info_num: 4    # the properties number of a task
 compute_type_num: 5 # the categories number of compute workers
 filestore_info_num: 3 # the properties number of a filestore worker
 
-worker_rate: 0.2
+worker_rate: 0.4
 public_data_rate: 0.4 # the top ? percent of the 100 files are public
 
 task_type: 1
@@ -34,14 +34,14 @@ task_type: 1
 # Training
 
 batch_size: 512
-num_ep_train: 20 # number of episodes from all agents
+num_ep_train: 50 # number of episodes from all agents
 # max_ep_length: 10000 # maximum number of steps per episode
-max_slot_per_ep: 100
+max_slot_per_ep: 200
 
 # Miscellaneous
 
 results_path: results
 get_statistics: True
 print_statistics_per_slot: 0
-debug_mode: 1
+debug_mode: 0
 log_pretext: change_N

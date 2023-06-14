@@ -102,7 +102,7 @@ def test_openraas(conf):
                 config['cloud_model'] = cloud_model
                 configs.append(copy.deepcopy(config))
     
-    if 1:
+    if 0:
         # 2. change worker_rate process
         config = copy.deepcopy(conf)
         config['task_type'] = 0
@@ -114,7 +114,7 @@ def test_openraas(conf):
                 config['worker_rate'] = x*1./10.
                 configs.append(copy.deepcopy(config))
     
-    if 1:
+    if 0:
         # 2. change N storage
         config = copy.deepcopy(conf)
         config['task_type'] = 1

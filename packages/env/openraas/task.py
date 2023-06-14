@@ -126,7 +126,7 @@ class StorageTask(Task):
         self.files_id = []
         span = round(max(5 + 2 * np.random.randn(1)[0], 1.))        # 5 time slots existing on the cloud drive
         # span = 1
-        file_num = int(max(10 + 3 * np.random.randn(1)[0], 1.))          # 10 files
+        file_num = int(max(20 + 5 * np.random.randn(1)[0], 1.))          # 20 files
         mem = 0.
         for i in range(file_num):
             # file_mem = max(500 + 2000 * np.random.randn(1)[0], 10.)       # MB per file
@@ -175,4 +175,6 @@ class DesktopTask(Task):
         elif type == 2:
             # TODO: deprecate it!
             return 0.
-        
+
+
+# about 51% volunteers are capable of being providers

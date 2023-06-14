@@ -28,7 +28,7 @@ Processing service:
 
 Storage service:
 
-- -, 10 files (500 MB each) uploads, 4 fixed layers (core os 100 MB, drivers 50 MB, library 50 MB, execution 10 MB)
+- -, 20 files (500 MB each) uploads, 4 fixed layers (core os 100 MB, drivers 50 MB, library 50 MB, execution 10 MB)
 
 - The execution workload is low and can be ignored.
 

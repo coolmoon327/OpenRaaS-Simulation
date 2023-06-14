@@ -289,8 +289,6 @@ class Environment(object):
             return [-1. for _ in range(self.state_len)]
         self.fs_candidates = []
         task = self.new_tasks[self.task_index]  
-        # 这里曾有超出 list range 的 bug，分析结果为 reset 时第一个 slot 内的任务被全部丢弃了
-        # TODO: 丢弃率太高也是个问题，需要解决，目测和 edge 的 server_mem_rate 很低有关
         client = self.devices[task.user_id]
         
         # 4.1 find the closest worker as compute candidates
@@ -361,7 +359,8 @@ class Environment(object):
         task.missing_layers = compute.find_missing_layers(task)
         
         if "raas" not in self.cloud_model_type() and len(task.missing_layers):
-            print(f"Missing {[task.missing_layers[i].id for i in range(len(task.missing_layers))]}, while having {[compute.layers[i].id for i in range(len(compute.layers))]}")
+            # TODO: 存在选出没有足够 layer 的 bug
+            print(f"Missing {[task.missing_layers[i].id for i in range(len(task.missing_layers))]}, while having {compute.layers}")
             raise ValueError(f"Cloud model {self.cloud_model_type()} chose a wrong compute worker {compute.id} lack of {len(task.missing_layers)} layers.")
         
         # 4.2 find devices with the target application as filestore candidates (return 10 candidates)
@@ -370,7 +369,11 @@ class Environment(object):
         
         if task.type == 1 and self.config['public_data_deduplication'] and 'raas' in self.cloud_model_type():
             # 对于 public 的存储文件进行处理
-            ds = self.workers if 'open' in self.cloud_model_type() else eds
+            if 'edge' in self.cloud_model_type():
+                ds = eds
+            else:
+                # openraas & center
+                ds = self.workers
             for i in reversed(range(len(task.files_id))):
                 fid = task.files_id[i]
                 if fid < 100 * self.config['public_data_rate']:
